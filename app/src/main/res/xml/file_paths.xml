@@ -1,0 +1,4 @@
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="card_images" path="card_images/" />
+    <cache-path name="shared_cards" path="shared_cards/" />
+</paths>
