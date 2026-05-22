@@ -6,7 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
-    tableName = "cards",
+    tableName = "grocery_items",
     indices = [Index("folderId")],
     foreignKeys = [
         ForeignKey(
@@ -17,19 +17,11 @@ import androidx.room.PrimaryKey
         )
     ]
 )
-data class CardEntity(
+data class GroceryItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val folderId: Long,
     val name: String,
-    val lastFourDigits: String? = null,
-    val pin: String? = null,
-    val frontImagePath: String,
-    val backImagePath: String,
-    val notes: String? = null,
-    val isPinned: Boolean = false,
-    val usageCount: Int = 0,
-    val lastOpenedAt: Long = System.currentTimeMillis(),
-    val createdAt: Long = System.currentTimeMillis(),
-    val isDeleted: Boolean = false,
-    val deletedAt: Long? = null
+    val quantity: String,
+    val isDone: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
 )

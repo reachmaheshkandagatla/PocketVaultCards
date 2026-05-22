@@ -1,5 +1,6 @@
 package com.mahesh.pocketvault.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -7,6 +8,13 @@ import androidx.room.PrimaryKey
 data class FolderEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
-    val icon: String = "📁",
+    val icon: String = "ID",
+    @ColumnInfo(defaultValue = "'cards'") val kind: String = KIND_CARDS,
     val createdAt: Long = System.currentTimeMillis()
-)
+) {
+    companion object {
+        const val KIND_CARDS = "cards"
+        const val KIND_GROCERIES = "groceries"
+        const val KIND_BANK_CARDS = "bank_cards"
+    }
+}
