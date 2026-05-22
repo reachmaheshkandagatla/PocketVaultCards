@@ -7,13 +7,20 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,11 +33,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.mahesh.pocketvault.data.CardEntity
+import com.mahesh.pocketvault.data.BankCardEntity
 import com.mahesh.pocketvault.data.FolderEntity
+import com.mahesh.pocketvault.data.GroceryItemEntity
 import com.mahesh.pocketvault.ui.CardViewModel
 import com.mahesh.pocketvault.util.ImageStore
 import com.mahesh.pocketvault.util.ShareUtil
@@ -60,6 +72,21 @@ private val VaultCoral = Color(0xFFF77F6F)
 private val VaultMist = Color(0xFFF6F8FC)
 private val VaultSurface = Color(0xFFFFFFFF)
 private val VaultLine = Color(0xFFE1E7F2)
+private val BankCardColorKeys = listOf(
+    BankCardEntity.COLOR_BLUE,
+    BankCardEntity.COLOR_GREEN,
+    BankCardEntity.COLOR_RED,
+    BankCardEntity.COLOR_GOLD,
+    BankCardEntity.COLOR_BLACK
+)
+
+private fun bankCardGradient(colorKey: String) = when (colorKey) {
+    BankCardEntity.COLOR_GREEN -> listOf(Color(0xFF0D5B47), Color(0xFF18A36F))
+    BankCardEntity.COLOR_RED -> listOf(Color(0xFF7D1D2D), Color(0xFFD5465A))
+    BankCardEntity.COLOR_GOLD -> listOf(Color(0xFF7A5510), Color(0xFFE3A72F))
+    BankCardEntity.COLOR_BLACK -> listOf(Color(0xFF171A22), Color(0xFF454B5E))
+    else -> listOf(Color(0xFF162B5E), Color(0xFF0B6C76))
+}
 
 private val vaultColorScheme = lightColorScheme(
     primary = VaultBlue,
@@ -144,6 +171,28 @@ class MainActivity : FragmentActivity() {
 
 }
 
+private fun authenticateForBankPin(activity: FragmentActivity, onSuccess: () -> Unit) {
+    val executor = ContextCompat.getMainExecutor(activity)
+    val biometricPrompt = BiometricPrompt(
+        activity,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
+                onSuccess()
+            }
+        }
+    )
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("View bank card PIN")
+        .setSubtitle("Authenticate to reveal the saved PIN")
+        .setNegativeButtonText("Cancel")
+        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        .build()
+
+    biometricPrompt.authenticate(promptInfo)
+}
+
 @Composable
 fun LockScreen(onRetry: () -> Unit) {
     MaterialTheme(colorScheme = vaultColorScheme) {
@@ -212,10 +261,12 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
     var screen by remember { mutableStateOf("home") }
     var selectedFolder by remember { mutableStateOf<FolderEntity?>(null) }
     var selectedCard by remember { mutableStateOf<CardEntity?>(null) }
+    var selectedBankCard by remember { mutableStateOf<BankCardEntity?>(null) }
 
     fun navigateBack() {
         screen = when (screen) {
-            "category" -> "home"
+            "category", "groceries", "bankCards" -> "home"
+            "bankCardDetail" -> "bankCards"
             "add", "detail", "deleted" -> "category"
             else -> screen
         }
@@ -228,7 +279,17 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
     MaterialTheme(colorScheme = vaultColorScheme) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             when (screen) {
-                "home" -> HomeScreen(vm, onOpen = { folder -> selectedFolder = folder; screen = "category" })
+                "home" -> HomeScreen(
+                    vm,
+                    onOpen = { folder ->
+                        selectedFolder = folder
+                        screen = when (folder.kind) {
+                            FolderEntity.KIND_GROCERIES -> "groceries"
+                            FolderEntity.KIND_BANK_CARDS -> "bankCards"
+                            else -> "category"
+                        }
+                    }
+                )
                 "category" -> selectedFolder?.let { folder ->
                     CategoryScreen(
                         vm = vm,
@@ -238,6 +299,23 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
                         onOpenCard = { card -> selectedCard = card; vm.markOpened(card); screen = "detail" },
                         onViewDeleted = { screen = "deleted" }
                     )
+                }
+                "groceries" -> selectedFolder?.let { folder ->
+                    GroceryListScreen(vm, folder, onBack = { screen = "home" })
+                }
+                "bankCards" -> selectedFolder?.let { folder ->
+                    BankCardListScreen(
+                        vm,
+                        folder,
+                        onBack = { screen = "home" },
+                        onOpenBankCard = { bankCard ->
+                            selectedBankCard = bankCard
+                            screen = "bankCardDetail"
+                        }
+                    )
+                }
+                "bankCardDetail" -> selectedBankCard?.let { bankCard ->
+                    BankCardDetailScreen(bankCard, vm, onBack = { screen = "bankCards" })
                 }
                 "add" -> selectedFolder?.let { folder ->
                     AddCardScreen(folder, onBack = { screen = "category" }, onSave = { vm.add(it); screen = "category" })
@@ -322,20 +400,35 @@ private fun StatPill(text: String, icon: @Composable (() -> Unit)? = null) {
 }
 
 @Composable
+private fun ListKindIcon(folder: FolderEntity, modifier: Modifier = Modifier) {
+    when (folder.kind) {
+        FolderEntity.KIND_GROCERIES -> Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = modifier)
+        FolderEntity.KIND_BANK_CARDS -> Text("💳", fontSize = MaterialTheme.typography.titleLarge.fontSize)
+        else -> Icon(Icons.Default.AccountBox, contentDescription = null, modifier = modifier)
+    }
+}
+
+@Composable
 fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
     val foldersFlow = remember { vm.folders() }
     val folders by foldersFlow.collectAsState(initial = emptyList())
-    var showNewFolderDialog by remember { mutableStateOf(false) }
+    var showCreateListMenu by remember { mutableStateOf(false) }
+    var newListKind by remember { mutableStateOf<String?>(null) }
+    var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
 
     VaultBackground {
-        Column(
+        Box(
             Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
                         .size(46.dp)
@@ -386,84 +479,201 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
                 }
             }
 
-            SectionTitle("Folders", trailing = if (folders.isEmpty()) null else "${folders.size} total")
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                Text("Folders", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
+                }
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(folders, key = { it.id }) { folder ->
+                        val itemCountFlow = remember(folder.id, folder.kind) {
+                            when (folder.kind) {
+                                FolderEntity.KIND_GROCERIES -> vm.groceryCount(folder.id)
+                                FolderEntity.KIND_BANK_CARDS -> vm.bankCardCount(folder.id)
+                                else -> vm.count(folder.id)
+                            }
+                        }
+                        val itemCount by itemCountFlow.collectAsState(initial = 0)
+                        FolderTile(
+                            folder = folder,
+                            subtitle = when (folder.kind) {
+                                FolderEntity.KIND_GROCERIES -> "$itemCount groceries"
+                                FolderEntity.KIND_BANK_CARDS -> "$itemCount bank cards"
+                                else -> "$itemCount Cards"
+                            },
+                            onClick = { onOpen(folder) },
+                            onDelete = { folderPendingDelete = folder }
+                        )
+                    }
+                }
+
+                Text(
+                    "100% offline. No internet permission. Your cards stay on your device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 58.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 20.dp, bottom = 22.dp)
             ) {
-                items(folders, key = { it.id }) { folder ->
-                    val cardCountFlow = remember(folder.id) { vm.count(folder.id) }
-                    val cardCount by cardCountFlow.collectAsState(initial = 0)
-                    FolderTile(folder, "$cardCount Cards") { onOpen(folder) }
+                FilledIconButton(
+                    onClick = { showCreateListMenu = true },
+                    modifier = Modifier.size(44.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Create list", modifier = Modifier.size(22.dp))
+                }
+                DropdownMenu(
+                    expanded = showCreateListMenu,
+                    onDismissRequest = { showCreateListMenu = false }
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = {
+                                newListKind = FolderEntity.KIND_CARDS
+                                showCreateListMenu = false
+                            }
+                        ) {
+                            Icon(Icons.Default.AccountBox, contentDescription = "Create ID cards list")
+                        }
+                        FilledTonalIconButton(
+                            onClick = {
+                                newListKind = FolderEntity.KIND_GROCERIES
+                                showCreateListMenu = false
+                            }
+                        ) {
+                            Icon(Icons.Default.ShoppingCart, contentDescription = "Create groceries list")
+                        }
+                        FilledTonalIconButton(
+                            onClick = {
+                                newListKind = FolderEntity.KIND_BANK_CARDS
+                                showCreateListMenu = false
+                            }
+                        ) {
+                            Text("💳", fontSize = MaterialTheme.typography.titleLarge.fontSize)
+                        }
+                    }
                 }
             }
-
-            Button(
-                onClick = { showNewFolderDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Icon(Icons.Default.Add, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Create New List")
-            }
-
-            Text(
-                "100% offline. No internet permission. Your cards stay on your device.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
     
-    if (showNewFolderDialog) {
+    newListKind?.let { kind ->
         NewFolderDialog(
-            onDismiss = { showNewFolderDialog = false },
+            kind = kind,
+            onDismiss = { newListKind = null },
             onConfirm = { folderName ->
-                vm.addFolder(FolderEntity(name = folderName))
-                showNewFolderDialog = false
+                vm.addFolder(
+                    FolderEntity(
+                        name = folderName,
+                        icon = when (kind) {
+                            FolderEntity.KIND_GROCERIES -> "🛒"
+                            FolderEntity.KIND_BANK_CARDS -> "💳"
+                            else -> "ID"
+                        },
+                        kind = kind
+                    )
+                )
+                newListKind = null
+            }
+        )
+    }
+
+    folderPendingDelete?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { folderPendingDelete = null },
+            title = { Text("Delete folder?") },
+            text = {
+                Text(
+                    when (folder.kind) {
+                        FolderEntity.KIND_GROCERIES -> "This deletes ${folder.name} and every grocery item inside it."
+                        FolderEntity.KIND_BANK_CARDS -> "This deletes ${folder.name} and every bank card inside it."
+                        else -> "This deletes ${folder.name} and every card inside it."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deleteFolder(folder)
+                        folderPendingDelete = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderPendingDelete = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }
 }
 
 @Composable
-fun FolderTile(folder: FolderEntity, subtitle: String, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+fun FolderTile(folder: FolderEntity, subtitle: String, onClick: () -> Unit, onDelete: () -> Unit) {
     Card(
         Modifier
             .fillMaxWidth()
-            .height(116.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(24.dp),
+            .aspectRatio(1f)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onDelete
+            ),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
     ) {
-        Row(Modifier.fillMaxSize().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Box(
                 Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(Brush.linearGradient(listOf(VaultGold.copy(alpha = 0.75f), VaultCoral.copy(alpha = 0.85f)))),
                 contentAlignment = Alignment.Center
             ) {
-                Text(folder.icon, fontSize = MaterialTheme.typography.headlineMedium.fontSize)
+                ListKindIcon(folder, modifier = Modifier.size(28.dp))
             }
-            Spacer(Modifier.width(18.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(folder.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleMedium)
-                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                Box(
-                    Modifier
-                        .width(92.dp)
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Brush.horizontalGradient(listOf(VaultBlue, VaultTeal)))
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    folder.name,
+                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -510,7 +720,7 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
                             .background(Brush.linearGradient(listOf(VaultGold, VaultCoral))),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(folder.icon, fontSize = MaterialTheme.typography.titleLarge.fontSize)
+                        ListKindIcon(folder, modifier = Modifier.size(26.dp))
                     }
                     Spacer(Modifier.width(10.dp))
                     Column {
@@ -546,6 +756,511 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
                         CardRow(card, vm, onOpenCard)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit) {
+    val groceryItemsFlow = remember(folder.id) { vm.groceryItems(folder.id) }
+    val groceryItems by groceryItemsFlow.collectAsState(initial = emptyList())
+    var itemName by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("") }
+    val doneCount = groceryItems.count { it.isDone }
+
+    fun addItem() {
+        if (itemName.isNotBlank() && quantity.isNotBlank()) {
+            vm.addGroceryItem(
+                GroceryItemEntity(
+                    folderId = folder.id,
+                    name = itemName.trim(),
+                    quantity = quantity.trim()
+                )
+            )
+            itemName = ""
+            quantity = ""
+        }
+    }
+
+    VaultBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Brush.linearGradient(listOf(VaultTeal, VaultBlue))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ListKindIcon(folder, modifier = Modifier.size(26.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(folder.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "$doneCount of ${groceryItems.size} done",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.95f)),
+                shape = RoundedCornerShape(22.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Column(
+                    Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = itemName,
+                            onValueChange = { itemName = it },
+                            label = { Text("Grocery") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        OutlinedTextField(
+                            value = quantity,
+                            onValueChange = { quantity = it },
+                            label = { Text("Qty") },
+                            modifier = Modifier.width(104.dp),
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                    }
+                    Button(
+                        onClick = { addItem() },
+                        enabled = itemName.isNotBlank() && quantity.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add Grocery")
+                    }
+                }
+            }
+
+            SectionTitle("Shopping List")
+            if (groceryItems.isEmpty()) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        "No groceries yet",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(groceryItems, key = { it.id }) { item ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.95f)),
+                            shape = RoundedCornerShape(18.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = item.isDone,
+                                    onCheckedChange = { vm.toggleGroceryItem(item) }
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        item.name,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (item.isDone) {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        }
+                                    )
+                                    Text(
+                                        item.quantity,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { vm.deleteGroceryItem(item) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete ${item.name}")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+fun BankCardListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, onOpenBankCard: (BankCardEntity) -> Unit) {
+    val bankCardsFlow = remember(folder.id) { vm.bankCards(folder.id) }
+    val bankCards by bankCardsFlow.collectAsState(initial = emptyList())
+    var name by remember { mutableStateOf("") }
+    var cardType by remember { mutableStateOf(BankCardEntity.TYPE_DEBIT) }
+    var cardColor by remember { mutableStateOf(BankCardEntity.COLOR_BLUE) }
+    var showCardTypeMenu by remember { mutableStateOf(false) }
+    var lastFourDigits by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var showPinInput by remember { mutableStateOf(false) }
+    var showAddBankCardDialog by remember { mutableStateOf(false) }
+
+    fun addBankCard() {
+        if (name.isNotBlank() && lastFourDigits.length == 4 && pin.isNotBlank()) {
+            vm.addBankCard(
+                BankCardEntity(
+                    folderId = folder.id,
+                    name = name.trim(),
+                    cardType = cardType,
+                    colorKey = cardColor,
+                    lastFourDigits = lastFourDigits,
+                    pin = pin
+                )
+            )
+            name = ""
+            cardType = BankCardEntity.TYPE_DEBIT
+            cardColor = BankCardEntity.COLOR_BLUE
+            lastFourDigits = ""
+            pin = ""
+            showPinInput = false
+            showAddBankCardDialog = false
+        }
+    }
+
+    VaultBackground {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+        ) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Brush.linearGradient(listOf(VaultInk, VaultBlue))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ListKindIcon(folder, modifier = Modifier.size(26.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(folder.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "${bankCards.size} masked bank cards",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+                SectionTitle("Bank Cards")
+                if (bankCards.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            "No bank cards yet",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(bankCards, key = { it.id }) { bankCard ->
+                            Card(
+                                modifier = Modifier.clickable { onOpenBankCard(bankCard) },
+                                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                                shape = RoundedCornerShape(20.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+                            ) {
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .background(Brush.linearGradient(bankCardGradient(bankCard.colorKey)))
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            bankCard.name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Surface(
+                                            color = Color.White.copy(alpha = 0.16f),
+                                            shape = RoundedCornerShape(50)
+                                        ) {
+                                            Text(
+                                                bankCard.cardType,
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.width(4.dp))
+                                        IconButton(onClick = { vm.deleteBankCard(bankCard) }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete bank card", tint = Color.White)
+                                        }
+                                    }
+                                    Text(
+                                        "****  ****  ****  ${bankCard.lastFourDigits}",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        "PIN ****",
+                                        color = Color.White.copy(alpha = 0.92f),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            FilledIconButton(
+                onClick = { showAddBankCardDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 18.dp)
+                    .size(48.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add bank card")
+            }
+        }
+    }
+
+    if (showAddBankCardDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddBankCardDialog = false },
+            title = { Text("Add Bank Card") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Bank card name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    ExposedDropdownMenuBox(
+                        expanded = showCardTypeMenu,
+                        onExpandedChange = { showCardTypeMenu = !showCardTypeMenu }
+                    ) {
+                        OutlinedTextField(
+                            value = cardType,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Card type") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCardTypeMenu) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            singleLine = true
+                        )
+                        ExposedDropdownMenu(
+                            expanded = showCardTypeMenu,
+                            onDismissRequest = { showCardTypeMenu = false }
+                        ) {
+                            listOf(BankCardEntity.TYPE_DEBIT, BankCardEntity.TYPE_CREDIT).forEach { type ->
+                                DropdownMenuItem(
+                                    text = { Text(type) },
+                                    onClick = {
+                                        cardType = type
+                                        showCardTypeMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Text("Bank color", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BankCardColorKeys.forEach { colorKey ->
+                            val colors = bankCardGradient(colorKey)
+                            Box(
+                                Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Brush.linearGradient(colors))
+                                    .border(
+                                        width = if (cardColor == colorKey) 3.dp else 1.dp,
+                                        color = if (cardColor == colorKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { cardColor = colorKey }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = lastFourDigits,
+                        onValueChange = { input ->
+                            lastFourDigits = input.filter(Char::isDigit).take(4)
+                        },
+                        label = { Text("Last 4 digits") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { pin = it.filter(Char::isDigit) },
+                        label = { Text("PIN") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = if (showPinInput) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        trailingIcon = {
+                            TextButton(onClick = { showPinInput = !showPinInput }) {
+                                Text(if (showPinInput) "Hide" else "Show")
+                            }
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { addBankCard() },
+                    enabled = name.isNotBlank() && lastFourDigits.length == 4 && pin.isNotBlank()
+                ) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddBankCardDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun BankCardDetailScreen(bankCard: BankCardEntity, vm: CardViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val activity = context as FragmentActivity
+    var showPin by remember { mutableStateOf(false) }
+
+    VaultBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                Column {
+                    Text(bankCard.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Selected bank card",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                shape = RoundedCornerShape(24.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Brush.linearGradient(bankCardGradient(bankCard.colorKey)))
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            bankCard.name,
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Surface(
+                            color = Color.White.copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Text(
+                                bankCard.cardType,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        "****  ****  ****  ${bankCard.lastFourDigits}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (showPin) "PIN ${bankCard.pin}" else "PIN ****",
+                        color = Color.White.copy(alpha = 0.94f),
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
+
+            FilledTonalButton(
+                onClick = {
+                    if (showPin) {
+                        showPin = false
+                    } else {
+                        authenticateForBankPin(activity) {
+                            showPin = true
+                            vm.markBankCardViewed(bankCard)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(Icons.Default.Lock, null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (showPin) "Hide PIN" else "View PIN")
             }
         }
     }
@@ -598,12 +1313,23 @@ fun CardRow(card: CardEntity, vm: CardViewModel, onOpen: (CardEntity) -> Unit) {
                 shape = RoundedCornerShape(14.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Image(
-                    painter = rememberAsyncImagePainter(File(card.frontImagePath)),
-                    contentDescription = "Card front",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+                if (card.frontImagePath.isBlank()) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.AccountBox, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                } else {
+                    Image(
+                        painter = rememberAsyncImagePainter(File(card.frontImagePath)),
+                        contentDescription = "Card front",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -668,6 +1394,18 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
         }
     }
 
+    val frontImagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { frontUri = it }
+    }
+
+    val backImagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { backUri = it }
+    }
+
     fun launchCardScanner(isFront: Boolean) {
         scanningFront = isFront
 
@@ -696,6 +1434,7 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
             Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -710,14 +1449,19 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
                         fontWeight = FontWeight.ExtraBold,
                         style = MaterialTheme.typography.titleLarge
                     )
-                    Text("Scan both sides for a polished vault entry", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Scan or upload both sides", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 Spacer(Modifier.weight(1f))
 
                 FilledIconButton(
                     onClick = {
-                        if (!isSaving && name.isNotBlank() && frontUri != null && backUri != null) {
+                        if (
+                            !isSaving &&
+                            name.isNotBlank() &&
+                            frontUri != null &&
+                            backUri != null
+                        ) {
                             isSaving = true
 
                             val front = ImageStore.saveImage(context, frontUri!!)
@@ -762,7 +1506,7 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
                             .background(Brush.linearGradient(listOf(VaultGold, VaultCoral))),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(folder.icon, fontSize = MaterialTheme.typography.titleLarge.fontSize)
+                        ListKindIcon(folder, modifier = Modifier.size(26.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
@@ -775,13 +1519,15 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
             ScanImageBox(
                 label = "Front Image",
                 uri = frontUri,
-                onScan = { launchCardScanner(true) }
+                onScan = { launchCardScanner(true) },
+                onUpload = { frontImagePicker.launch("image/*") }
             )
 
             ScanImageBox(
-                label = "Back Image",
+                label = "Rear Image",
                 uri = backUri,
-                onScan = { launchCardScanner(false) }
+                onScan = { launchCardScanner(false) },
+                onUpload = { backImagePicker.launch("image/*") }
             )
 
             OutlinedTextField(
@@ -798,43 +1544,67 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
 }
 
 @Composable
-fun ScanImageBox(label: String, uri: Uri?, onScan: () -> Unit) {
+fun ScanImageBox(label: String, uri: Uri?, onScan: () -> Unit, onUpload: () -> Unit) {
     Card(
-        Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .clickable { onScan() },
+        Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.95f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
     ) {
-        if (uri == null) {
+        Column {
             Box(
                 Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .clickable { onScan() }
                     .background(Brush.linearGradient(listOf(Color.White, Color(0xFFEAF6FF)))),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(
-                        Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
+                if (uri == null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(
+                            Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Text(label, fontWeight = FontWeight.SemiBold)
                     }
-                    Text("Tap to scan $label", fontWeight = FontWeight.SemiBold)
+                } else {
+                    Image(
+                        painter = rememberAsyncImagePainter(uri),
+                        contentDescription = label,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit
+                    )
                 }
             }
-        } else {
-            Image(
-                painter = rememberAsyncImagePainter(uri),
-                contentDescription = label,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
-            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onScan,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Scan")
+                }
+                FilledTonalButton(
+                    onClick = onUpload,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Upload")
+                }
+            }
         }
     }
 }
@@ -843,7 +1613,7 @@ fun ScanImageBox(label: String, uri: Uri?, onScan: () -> Unit) {
 fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     var showBack by remember { mutableStateOf(false) }
-    val file = File(if (showBack) card.backImagePath else card.frontImagePath)
+    val imagePath = if (showBack) card.backImagePath else card.frontImagePath
 
     VaultBackground {
         Column(
@@ -857,7 +1627,7 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
                 Column(Modifier.weight(1f)) {
                     Text(card.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
-                    Text(if (showBack) "Back side" else "Front side", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (showBack) "Rear side" else "Front side", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 FilledTonalIconButton(onClick = { vm.togglePin(card) }) {
                     Icon(Icons.Default.Star, null, tint = if (card.isPinned) VaultGold else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -891,27 +1661,51 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                     elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
                 ) {
                     Box(Modifier.background(Brush.linearGradient(listOf(Color.White, Color(0xFFEFF7FF))))) {
-                        Image(
-                            rememberAsyncImagePainter(file),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(10.dp)
-                                .graphicsLayer {
-                                    scaleX = scale
-                                    scaleY = scale
-                                    translationX = offset.x
-                                    translationY = offset.y
-                                },
-                            contentScale = ContentScale.Fit
-                        )
+                        if (imagePath.isBlank()) {
+                            Column(
+                                Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.AccountBox,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "No ${if (showBack) "rear" else "front"} image saved",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Image(
+                                rememberAsyncImagePainter(File(imagePath)),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(10.dp)
+                                    .graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
+                                        translationX = offset.x
+                                        translationY = offset.y
+                                    },
+                                contentScale = ContentScale.Fit
+                            )
+                        }
                     }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = { showBack = false }, shape = RoundedCornerShape(16.dp)) { Text("Front") }
-                Button(onClick = { showBack = true }, shape = RoundedCornerShape(16.dp)) { Text("Back") }
-                FilledTonalButton(onClick = { ShareUtil.shareCard(context, card, shareBack = showBack) }, shape = RoundedCornerShape(16.dp)) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text("Share") }
+                Button(onClick = { showBack = true }, shape = RoundedCornerShape(16.dp)) { Text("Rear") }
+                FilledTonalButton(
+                    onClick = { ShareUtil.shareCard(context, card, shareBack = showBack) },
+                    enabled = imagePath.isNotBlank(),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text("Share") }
             }
             card.notes?.let {
                 Card(
@@ -932,18 +1726,26 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-fun NewFolderDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun NewFolderDialog(kind: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var folderName by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Create New List") },
+        title = {
+            Text(
+                when (kind) {
+                    FolderEntity.KIND_GROCERIES -> "Create Groceries List"
+                    FolderEntity.KIND_BANK_CARDS -> "Create Bank Cards List"
+                    else -> "Create Folder"
+                }
+            )
+        },
         text = {
             Column(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = folderName,
                     onValueChange = { folderName = it },
-                    label = { Text("Folder name") },
+                    label = { Text("List name") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

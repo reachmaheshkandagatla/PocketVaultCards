@@ -1,6 +1,11 @@
 package com.mahesh.pocketvault.data
 
-class CardRepository(private val dao: CardDao, private val folderDao: FolderDao) {
+class CardRepository(
+    private val dao: CardDao,
+    private val folderDao: FolderDao,
+    private val groceryItemDao: GroceryItemDao,
+    private val bankCardDao: BankCardDao
+) {
     fun folders() = folderDao.allFolders()
     suspend fun addFolder(folder: FolderEntity) = folderDao.insert(folder)
     suspend fun deleteFolder(folder: FolderEntity) = folderDao.delete(folder)
@@ -18,4 +23,18 @@ class CardRepository(private val dao: CardDao, private val folderDao: FolderDao)
     suspend fun restore(card: CardEntity) = dao.update(card.copy(isDeleted = false, deletedAt = null))
     suspend fun delete(card: CardEntity) = dao.delete(card)
     suspend fun get(id: Long) = dao.getById(id)
+
+    fun groceryItems(folderId: Long) = groceryItemDao.itemsByFolder(folderId)
+    fun groceryCount(folderId: Long) = groceryItemDao.countByFolder(folderId)
+    suspend fun addGroceryItem(item: GroceryItemEntity) = groceryItemDao.insert(item)
+    suspend fun toggleGroceryItem(item: GroceryItemEntity) = groceryItemDao.update(item.copy(isDone = !item.isDone))
+    suspend fun deleteGroceryItem(item: GroceryItemEntity) = groceryItemDao.delete(item)
+
+    fun bankCards(folderId: Long) = bankCardDao.cardsByFolder(folderId)
+    fun bankCardCount(folderId: Long) = bankCardDao.countByFolder(folderId)
+    suspend fun addBankCard(card: BankCardEntity) = bankCardDao.insert(card)
+    suspend fun markBankCardViewed(card: BankCardEntity) = bankCardDao.update(
+        card.copy(usageCount = card.usageCount + 1, lastViewedAt = System.currentTimeMillis())
+    )
+    suspend fun deleteBankCard(card: BankCardEntity) = bankCardDao.delete(card)
 }
