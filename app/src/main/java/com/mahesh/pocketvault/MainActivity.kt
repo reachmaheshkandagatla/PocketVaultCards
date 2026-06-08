@@ -2,6 +2,10 @@ package com.mahesh.pocketvault
 
 import android.net.Uri
 import android.os.Bundle
+import android.app.KeyguardManager
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -32,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -63,6 +68,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.activity.result.IntentSenderRequest
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val VaultInk = Color(0xFF14213D)
 private val VaultBlue = Color(0xFF2457D6)
@@ -102,6 +110,41 @@ private val vaultColorScheme = lightColorScheme(
     error = Color(0xFFB3261E)
 )
 
+private fun billNameFor(timestamp: Long): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+    return "Bill ${formatter.format(Date(timestamp))}"
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+@Composable
+private fun MaxScreenBrightness() {
+    val context = LocalContext.current
+
+    DisposableEffect(context) {
+        val activity = context.findActivity()
+        val window = activity?.window
+        if (window == null) {
+            onDispose { }
+        } else {
+            val originalBrightness = window.attributes.screenBrightness
+            window.attributes = window.attributes.apply {
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+            }
+
+            onDispose {
+                window.attributes = window.attributes.apply {
+                    screenBrightness = originalBrightness
+                }
+            }
+        }
+    }
+}
+
 class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -124,7 +167,8 @@ class MainActivity : FragmentActivity() {
                             onSuccess = { unlocked = true },
                             onFail = { unlocked = false }
                         )
-                    }
+                    },
+                    onUnlock = { unlocked = true }
                 )
             }
         }
@@ -194,7 +238,32 @@ private fun authenticateForBankPin(activity: FragmentActivity, onSuccess: () -> 
 }
 
 @Composable
-fun LockScreen(onRetry: () -> Unit) {
+fun LockScreen(onRetry: () -> Unit, onUnlock: () -> Unit) {
+    val context = LocalContext.current
+    val keyguardManager = remember {
+        context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+    }
+    val deviceCredentialLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            onUnlock()
+        }
+    }
+
+    fun unlockWithDeviceCredential() {
+        val credentialIntent = keyguardManager.createConfirmDeviceCredentialIntent(
+            "Unlock PocketVault",
+            "Use your phone PIN, password, or pattern"
+        )
+
+        if (credentialIntent != null) {
+            deviceCredentialLauncher.launch(credentialIntent)
+        } else {
+            onRetry()
+        }
+    }
+
     MaterialTheme(colorScheme = vaultColorScheme) {
         VaultBackground {
             Box(
@@ -249,6 +318,17 @@ fun LockScreen(onRetry: () -> Unit) {
                             Spacer(Modifier.width(8.dp))
                             Text("Unlock PocketVault")
                         }
+                        OutlinedButton(
+                            onClick = { unlockWithDeviceCredential() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(Icons.Default.Lock, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Use Phone PIN / Pattern")
+                        }
                     }
                 }
             }
@@ -261,12 +341,14 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
     var screen by remember { mutableStateOf("home") }
     var selectedFolder by remember { mutableStateOf<FolderEntity?>(null) }
     var selectedCard by remember { mutableStateOf<CardEntity?>(null) }
+    var selectedBill by remember { mutableStateOf<CardEntity?>(null) }
     var selectedBankCard by remember { mutableStateOf<BankCardEntity?>(null) }
 
     fun navigateBack() {
         screen = when (screen) {
-            "category", "groceries", "bankCards" -> "home"
+            "category", "groceries", "bankCards", "bills" -> "home"
             "bankCardDetail" -> "bankCards"
+            "billDetail" -> "bills"
             "add", "detail", "deleted" -> "category"
             else -> screen
         }
@@ -286,6 +368,8 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
                         screen = when (folder.kind) {
                             FolderEntity.KIND_GROCERIES -> "groceries"
                             FolderEntity.KIND_BANK_CARDS -> "bankCards"
+                            FolderEntity.KIND_BILLS -> "bills"
+                            FolderEntity.KIND_COUPONS -> "category"
                             else -> "category"
                         }
                     }
@@ -302,6 +386,24 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
                 }
                 "groceries" -> selectedFolder?.let { folder ->
                     GroceryListScreen(vm, folder, onBack = { screen = "home" })
+                }
+                "bills" -> selectedFolder?.let { folder ->
+                    BillListScreen(
+                        vm = vm,
+                        folder = folder,
+                        onBack = { screen = "home" },
+                        onOpenBill = { bill ->
+                            selectedBill = bill
+                            screen = "billDetail"
+                        }
+                    )
+                }
+                "billDetail" -> selectedBill?.let { bill ->
+                    BillDetailScreen(
+                        bill = bill,
+                        vm = vm,
+                        onBack = { screen = "bills" }
+                    )
                 }
                 "bankCards" -> selectedFolder?.let { folder ->
                     BankCardListScreen(
@@ -402,8 +504,10 @@ private fun StatPill(text: String, icon: @Composable (() -> Unit)? = null) {
 @Composable
 private fun ListKindIcon(folder: FolderEntity, modifier: Modifier = Modifier) {
     when (folder.kind) {
+        FolderEntity.KIND_COUPONS -> Text("%", fontWeight = FontWeight.ExtraBold, fontSize = MaterialTheme.typography.titleLarge.fontSize)
         FolderEntity.KIND_GROCERIES -> Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = modifier)
         FolderEntity.KIND_BANK_CARDS -> Text("💳", fontSize = MaterialTheme.typography.titleLarge.fontSize)
+        FolderEntity.KIND_BILLS -> Text("🧾", fontSize = MaterialTheme.typography.titleLarge.fontSize)
         else -> Icon(Icons.Default.AccountBox, contentDescription = null, modifier = modifier)
     }
 }
@@ -412,8 +516,7 @@ private fun ListKindIcon(folder: FolderEntity, modifier: Modifier = Modifier) {
 fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
     val foldersFlow = remember { vm.folders() }
     val folders by foldersFlow.collectAsState(initial = emptyList())
-    var showCreateListMenu by remember { mutableStateOf(false) }
-    var newListKind by remember { mutableStateOf<String?>(null) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
 
     VaultBackground {
@@ -429,15 +532,14 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Brush.linearGradient(listOf(VaultBlue, VaultTeal))),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White)
-                }
+                Image(
+                    painter = painterResource(id = R.mipmap.ic_launcher),
+                    contentDescription = "PocketVault logo",
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(RoundedCornerShape(14.dp)),
+                    contentScale = ContentScale.Crop
+                )
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text("PocketVault Cards", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
@@ -495,8 +597,10 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
                     items(folders, key = { it.id }) { folder ->
                         val itemCountFlow = remember(folder.id, folder.kind) {
                             when (folder.kind) {
+                                FolderEntity.KIND_COUPONS -> vm.count(folder.id)
                                 FolderEntity.KIND_GROCERIES -> vm.groceryCount(folder.id)
                                 FolderEntity.KIND_BANK_CARDS -> vm.bankCardCount(folder.id)
+                                FolderEntity.KIND_BILLS -> vm.count(folder.id)
                                 else -> vm.count(folder.id)
                             }
                         }
@@ -504,8 +608,10 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
                         FolderTile(
                             folder = folder,
                             subtitle = when (folder.kind) {
+                                FolderEntity.KIND_COUPONS -> "$itemCount coupons"
                                 FolderEntity.KIND_GROCERIES -> "$itemCount groceries"
                                 FolderEntity.KIND_BANK_CARDS -> "$itemCount bank cards"
+                                FolderEntity.KIND_BILLS -> "$itemCount bills"
                                 else -> "$itemCount Cards"
                             },
                             onClick = { onOpen(folder) },
@@ -528,67 +634,34 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
                     .padding(end = 20.dp, bottom = 22.dp)
             ) {
                 FilledIconButton(
-                    onClick = { showCreateListMenu = true },
+                    onClick = { showCreateFolderDialog = true },
                     modifier = Modifier.size(44.dp),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Create list", modifier = Modifier.size(22.dp))
                 }
-                DropdownMenu(
-                    expanded = showCreateListMenu,
-                    onDismissRequest = { showCreateListMenu = false }
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilledTonalIconButton(
-                            onClick = {
-                                newListKind = FolderEntity.KIND_CARDS
-                                showCreateListMenu = false
-                            }
-                        ) {
-                            Icon(Icons.Default.AccountBox, contentDescription = "Create ID cards list")
-                        }
-                        FilledTonalIconButton(
-                            onClick = {
-                                newListKind = FolderEntity.KIND_GROCERIES
-                                showCreateListMenu = false
-                            }
-                        ) {
-                            Icon(Icons.Default.ShoppingCart, contentDescription = "Create groceries list")
-                        }
-                        FilledTonalIconButton(
-                            onClick = {
-                                newListKind = FolderEntity.KIND_BANK_CARDS
-                                showCreateListMenu = false
-                            }
-                        ) {
-                            Text("💳", fontSize = MaterialTheme.typography.titleLarge.fontSize)
-                        }
-                    }
-                }
             }
         }
     }
     
-    newListKind?.let { kind ->
+    if (showCreateFolderDialog) {
         NewFolderDialog(
-            kind = kind,
-            onDismiss = { newListKind = null },
-            onConfirm = { folderName ->
+            onDismiss = { showCreateFolderDialog = false },
+            onConfirm = { folderName, kind ->
                 vm.addFolder(
                     FolderEntity(
                         name = folderName,
                         icon = when (kind) {
+                            FolderEntity.KIND_COUPONS -> "COUPON"
                             FolderEntity.KIND_GROCERIES -> "🛒"
                             FolderEntity.KIND_BANK_CARDS -> "💳"
+                            FolderEntity.KIND_BILLS -> "🧾"
                             else -> "ID"
                         },
                         kind = kind
                     )
                 )
-                newListKind = null
+                showCreateFolderDialog = false
             }
         )
     }
@@ -600,8 +673,10 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
             text = {
                 Text(
                     when (folder.kind) {
+                        FolderEntity.KIND_COUPONS -> "This deletes ${folder.name} and every coupon card inside it."
                         FolderEntity.KIND_GROCERIES -> "This deletes ${folder.name} and every grocery item inside it."
                         FolderEntity.KIND_BANK_CARDS -> "This deletes ${folder.name} and every bank card inside it."
+                        FolderEntity.KIND_BILLS -> "This deletes ${folder.name} and every scanned bill inside it."
                         else -> "This deletes ${folder.name} and every card inside it."
                     }
                 )
@@ -690,6 +765,8 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
     val cards by cardsFlow.collectAsState(initial = emptyList())
     val deletedCount by deletedCountFlow.collectAsState(initial = 0)
     val frequent = cards.filter { it.isPinned || it.usageCount > 0 }.take(8)
+    val itemLabel = if (folder.kind == FolderEntity.KIND_COUPONS) "coupons" else "cards"
+    val itemTitle = if (folder.kind == FolderEntity.KIND_COUPONS) "Coupons" else "Cards"
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -725,7 +802,7 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(folder.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
-                        Text("${cards.size} active cards", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${cards.size} active $itemLabel", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.weight(1f))
                     if (deletedCount > 0) {
@@ -737,7 +814,7 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
                     }
                 }
 
-                SectionTitle("Frequent Cards", trailing = if (frequent.isEmpty()) "Pin favorites" else null)
+                SectionTitle("Frequent $itemTitle", trailing = if (frequent.isEmpty()) "Pin favorites" else null)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.height(132.dp)) {
                     items(
                         items = frequent,
@@ -747,7 +824,7 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
                     }
                 }
 
-                SectionTitle("All Cards")
+                SectionTitle("All $itemTitle")
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(
                         items = cards,
@@ -906,6 +983,252 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun BillListScreen(
+    vm: CardViewModel,
+    folder: FolderEntity,
+    onBack: () -> Unit,
+    onOpenBill: (CardEntity) -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as Activity
+    val billsFlow = remember(folder.id) { vm.cards(folder.id) }
+    val bills by billsFlow.collectAsState(initial = emptyList())
+    val sortedBills = remember(bills) { bills.sortedByDescending { it.createdAt } }
+    var isScanning by remember { mutableStateOf(false) }
+
+    val scannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        isScanning = false
+        if (result.resultCode == Activity.RESULT_OK) {
+            val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            val scannedUri = scanResult?.pages?.firstOrNull()?.imageUri
+
+            if (scannedUri != null) {
+                val capturedAt = System.currentTimeMillis()
+                val imagePath = ImageStore.saveImage(context, scannedUri)
+                vm.add(
+                    CardEntity(
+                        folderId = folder.id,
+                        name = billNameFor(capturedAt),
+                        frontImagePath = imagePath,
+                        backImagePath = "",
+                        createdAt = capturedAt
+                    )
+                )
+            }
+        }
+    }
+
+    fun launchBillScanner() {
+        if (isScanning) return
+        isScanning = true
+
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(false)
+            .setPageLimit(1)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+
+        GmsDocumentScanning.getClient(options)
+            .getStartScanIntent(activity)
+            .addOnSuccessListener { intentSender ->
+                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener {
+                isScanning = false
+                it.printStackTrace()
+            }
+    }
+
+    Scaffold(
+        containerColor = Color.Transparent,
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { launchBillScanner() },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                if (isScanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(Icons.Default.Add, contentDescription = "Scan bill")
+                }
+            }
+        }
+    ) { pad ->
+        VaultBackground {
+            Column(
+                Modifier
+                    .padding(pad)
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Brush.linearGradient(listOf(VaultGold, VaultCoral))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ListKindIcon(folder, modifier = Modifier.size(26.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(folder.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                        Text("${sortedBills.size} scanned bills", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                if (sortedBills.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
+                            shape = RoundedCornerShape(24.dp)
+                        ) {
+                            Column(
+                                Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text("No bills scanned yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                                Button(onClick = { launchBillScanner() }, shape = RoundedCornerShape(16.dp)) {
+                                    Icon(Icons.Default.Add, null)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Scan Bill")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(
+                            items = sortedBills,
+                            key = { it.id }
+                        ) { bill ->
+                            BillRow(
+                                bill = bill,
+                                onOpen = { onOpenBill(bill) },
+                                onShare = { ShareUtil.shareImage(context, bill.frontImagePath, bill.name) },
+                                onDelete = { vm.softDelete(bill) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BillRow(bill: CardEntity, onOpen: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.95f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+    ) {
+        Row(
+            Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Card(
+                modifier = Modifier.size(66.dp),
+                shape = RoundedCornerShape(14.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Image(
+                    painter = rememberAsyncImagePainter(File(bill.frontImagePath)),
+                    contentDescription = "Bill scan",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(bill.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
+                Text("Tap to view", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+            FilledTonalIconButton(onClick = onShare, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(4.dp))
+            FilledTonalIconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
+
+    VaultBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                Column(Modifier.weight(1f)) {
+                    Text(bill.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                    Text("Scanned bill", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                FilledTonalIconButton(onClick = { ShareUtil.shareImage(context, bill.frontImagePath, bill.name) }) {
+                    Icon(Icons.Default.Share, null)
+                }
+            }
+
+            Card(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Image(
+                    painter = rememberAsyncImagePainter(File(bill.frontImagePath)),
+                    contentDescription = "Bill scan",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            OutlinedButton(
+                onClick = { vm.softDelete(bill); onBack() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(Icons.Default.Delete, null)
+                Spacer(Modifier.width(6.dp))
+                Text("Delete")
             }
         }
     }
@@ -1449,7 +1772,7 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
                         fontWeight = FontWeight.ExtraBold,
                         style = MaterialTheme.typography.titleLarge
                     )
-                    Text("Scan or upload both sides", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Scan or upload the front. Rear side is optional.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 Spacer(Modifier.weight(1f))
@@ -1459,13 +1782,12 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
                         if (
                             !isSaving &&
                             name.isNotBlank() &&
-                            frontUri != null &&
-                            backUri != null
+                            frontUri != null
                         ) {
                             isSaving = true
 
                             val front = ImageStore.saveImage(context, frontUri!!)
-                            val back = ImageStore.saveImage(context, backUri!!)
+                            val back = backUri?.let { ImageStore.saveImage(context, it) }.orEmpty()
 
                             onSave(
                                 CardEntity(
@@ -1478,7 +1800,7 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
                             )
                         }
                     },
-                    enabled = name.isNotBlank() && frontUri != null && backUri != null && !isSaving
+                    enabled = name.isNotBlank() && frontUri != null && !isSaving
                 ) {
                     Icon(Icons.Default.Check, null)
                 }
@@ -1524,7 +1846,7 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
             )
 
             ScanImageBox(
-                label = "Rear Image",
+                label = "Rear Image Optional",
                 uri = backUri,
                 onScan = { launchCardScanner(false) },
                 onUpload = { backImagePicker.launch("image/*") }
@@ -1611,6 +1933,8 @@ fun ScanImageBox(label: String, uri: Uri?, onScan: () -> Unit, onUpload: () -> U
 
 @Composable
 fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
+    MaxScreenBrightness()
+
     val context = LocalContext.current
     var showBack by remember { mutableStateOf(false) }
     val imagePath = if (showBack) card.backImagePath else card.frontImagePath
@@ -1726,22 +2050,58 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-fun NewFolderDialog(kind: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun NewFolderDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit) {
     var folderName by remember { mutableStateOf("") }
+    var selectedKind by remember { mutableStateOf(FolderEntity.KIND_CARDS) }
+    var showKindMenu by remember { mutableStateOf(false) }
+    val folderKinds = listOf(
+        FolderEntity.KIND_CARDS,
+        FolderEntity.KIND_COUPONS,
+        FolderEntity.KIND_BANK_CARDS,
+        FolderEntity.KIND_GROCERIES,
+        FolderEntity.KIND_BILLS
+    )
+
+    fun folderKindLabel(kind: String) = when (kind) {
+        FolderEntity.KIND_COUPONS -> "Coupons"
+        FolderEntity.KIND_BANK_CARDS -> "Bank Cards"
+        FolderEntity.KIND_GROCERIES -> "Groceries"
+        FolderEntity.KIND_BILLS -> "Bills"
+        else -> "Cards"
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                when (kind) {
-                    FolderEntity.KIND_GROCERIES -> "Create Groceries List"
-                    FolderEntity.KIND_BANK_CARDS -> "Create Bank Cards List"
-                    else -> "Create Folder"
-                }
-            )
-        },
+        title = { Text("Create Folder") },
         text = {
-            Column(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box {
+                    OutlinedButton(
+                        onClick = { showKindMenu = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(folderKindLabel(selectedKind), modifier = Modifier.weight(1f))
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                    }
+                    DropdownMenu(
+                        expanded = showKindMenu,
+                        onDismissRequest = { showKindMenu = false }
+                    ) {
+                        folderKinds.forEach { kind ->
+                            DropdownMenuItem(
+                                text = { Text(folderKindLabel(kind)) },
+                                onClick = {
+                                    selectedKind = kind
+                                    showKindMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = folderName,
                     onValueChange = { folderName = it },
@@ -1752,7 +2112,7 @@ fun NewFolderDialog(kind: String, onDismiss: () -> Unit, onConfirm: (String) -> 
         },
         confirmButton = {
             Button(
-                onClick = { if (folderName.isNotBlank()) onConfirm(folderName) },
+                onClick = { if (folderName.isNotBlank()) onConfirm(folderName, selectedKind) },
                 enabled = folderName.isNotBlank()
             ) {
                 Text("Create")

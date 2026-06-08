@@ -14,7 +14,9 @@ data class FolderEntity(
 ) {
     companion object {
         const val KIND_CARDS = "cards"
+        const val KIND_COUPONS = "coupons"
         const val KIND_GROCERIES = "groceries"
         const val KIND_BANK_CARDS = "bank_cards"
+        const val KIND_BILLS = "bills"
     }
 }
