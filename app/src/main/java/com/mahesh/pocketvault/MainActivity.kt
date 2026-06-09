@@ -2,9 +2,11 @@ package com.mahesh.pocketvault
 
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.PackageManager
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -517,6 +519,8 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
     val foldersFlow = remember { vm.folders() }
     val folders by foldersFlow.collectAsState(initial = emptyList())
     var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var folderPendingAction by remember { mutableStateOf<FolderEntity?>(null) }
+    var folderPendingRename by remember { mutableStateOf<FolderEntity?>(null) }
     var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
 
     VaultBackground {
@@ -615,7 +619,7 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
                                 else -> "$itemCount Cards"
                             },
                             onClick = { onOpen(folder) },
-                            onDelete = { folderPendingDelete = folder }
+                            onLongPress = { folderPendingAction = folder }
                         )
                     }
                 }
@@ -666,6 +670,56 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
         )
     }
 
+    folderPendingAction?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { folderPendingAction = null },
+            title = { Text(folder.name) },
+            text = { Text("Choose an action for this folder.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        folderPendingAction = null
+                        folderPendingRename = folder
+                    }
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Rename")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            folderPendingAction = null
+                            folderPendingDelete = folder
+                        }
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Delete")
+                    }
+                    TextButton(onClick = { folderPendingAction = null }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
+    folderPendingRename?.let { folder ->
+        RenameDialog(
+            title = "Rename Folder",
+            label = "Folder name",
+            currentName = folder.name,
+            onDismiss = { folderPendingRename = null },
+            onConfirm = { newName ->
+                vm.renameFolder(folder, newName)
+                folderPendingRename = null
+            }
+        )
+    }
+
     folderPendingDelete?.let { folder ->
         AlertDialog(
             onDismissRequest = { folderPendingDelete = null },
@@ -702,14 +756,14 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-fun FolderTile(folder: FolderEntity, subtitle: String, onClick: () -> Unit, onDelete: () -> Unit) {
+fun FolderTile(folder: FolderEntity, subtitle: String, onClick: () -> Unit, onLongPress: () -> Unit) {
     Card(
         Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onDelete
+                onLongClick = onLongPress
             ),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
@@ -767,6 +821,7 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
     val frequent = cards.filter { it.isPinned || it.usageCount > 0 }.take(8)
     val itemLabel = if (folder.kind == FolderEntity.KIND_COUPONS) "coupons" else "cards"
     val itemTitle = if (folder.kind == FolderEntity.KIND_COUPONS) "Coupons" else "Cards"
+    var cardPendingRename by remember { mutableStateOf<CardEntity?>(null) }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -830,21 +885,70 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
                         items = cards,
                         key = { it.id }
                     ) { card ->
-                        CardRow(card, vm, onOpenCard)
+                        CardRow(card, vm, onOpenCard, onRename = { cardPendingRename = card })
                     }
                 }
             }
         }
     }
+
+    cardPendingRename?.let { card ->
+        RenameDialog(
+            title = "Rename ${if (folder.kind == FolderEntity.KIND_COUPONS) "Coupon" else "Card"}",
+            label = "Name",
+            currentName = card.name,
+            onDismiss = { cardPendingRename = null },
+            onConfirm = { newName ->
+                vm.rename(card, newName)
+                cardPendingRename = null
+            }
+        )
+    }
 }
 
 @Composable
 fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit) {
+    val context = LocalContext.current
     val groceryItemsFlow = remember(folder.id) { vm.groceryItems(folder.id) }
     val groceryItems by groceryItemsFlow.collectAsState(initial = emptyList())
     var itemName by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("") }
     val doneCount = groceryItems.count { it.isDone }
+    val pendingCount = groceryItems.count { !it.isDone }
+    var remindersEnabled by remember(folder.id) {
+        mutableStateOf(GroceryReminderScheduler.isEnabled(context, folder.id))
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            GroceryReminderScheduler.setEnabled(context, folder.id, folder.name, true)
+            remindersEnabled = true
+        } else {
+            remindersEnabled = false
+        }
+    }
+
+    fun enableReminders() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            GroceryReminderScheduler.setEnabled(context, folder.id, folder.name, true)
+            remindersEnabled = true
+        }
+    }
+
+    LaunchedEffect(remindersEnabled, pendingCount, folder.id, folder.name) {
+        if (remindersEnabled) {
+            if (pendingCount > 0) {
+                GroceryReminderScheduler.schedule(context, folder.id, folder.name)
+            } else {
+                GroceryReminderScheduler.cancel(context, folder.id)
+            }
+        }
+    }
 
     fun addItem() {
         if (itemName.isNotBlank() && quantity.isNotBlank()) {
@@ -886,6 +990,43 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
                         "$doneCount of ${groceryItems.size} done",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.95f)),
+                shape = RoundedCornerShape(18.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Grocery reminders", fontWeight = FontWeight.ExtraBold)
+                        Text(
+                            if (remindersEnabled) {
+                                if (pendingCount > 0) "On for unchecked items" else "On, no pending items"
+                            } else {
+                                "Off"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = remindersEnabled,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                enableReminders()
+                            } else {
+                                GroceryReminderScheduler.setEnabled(context, folder.id, folder.name, false)
+                                remindersEnabled = false
+                            }
+                        }
                     )
                 }
             }
@@ -1001,6 +1142,7 @@ fun BillListScreen(
     val bills by billsFlow.collectAsState(initial = emptyList())
     val sortedBills = remember(bills) { bills.sortedByDescending { it.createdAt } }
     var isScanning by remember { mutableStateOf(false) }
+    var billPendingRename by remember { mutableStateOf<CardEntity?>(null) }
 
     val scannerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
@@ -1125,6 +1267,7 @@ fun BillListScreen(
                             BillRow(
                                 bill = bill,
                                 onOpen = { onOpenBill(bill) },
+                                onRename = { billPendingRename = bill },
                                 onShare = { ShareUtil.shareImage(context, bill.frontImagePath, bill.name) },
                                 onDelete = { vm.softDelete(bill) }
                             )
@@ -1134,10 +1277,23 @@ fun BillListScreen(
             }
         }
     }
+
+    billPendingRename?.let { bill ->
+        RenameDialog(
+            title = "Rename Bill",
+            label = "Bill name",
+            currentName = bill.name,
+            onDismiss = { billPendingRename = null },
+            onConfirm = { newName ->
+                vm.rename(bill, newName)
+                billPendingRename = null
+            }
+        )
+    }
 }
 
 @Composable
-fun BillRow(bill: CardEntity, onOpen: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+fun BillRow(bill: CardEntity, onOpen: () -> Unit, onRename: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
     Card(
         Modifier
             .fillMaxWidth()
@@ -1169,6 +1325,10 @@ fun BillRow(bill: CardEntity, onOpen: () -> Unit, onShare: () -> Unit, onDelete:
                 Text(bill.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleSmall)
                 Text("Tap to view", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
+            FilledTonalIconButton(onClick = onRename, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(4.dp))
             FilledTonalIconButton(onClick = onShare, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
             }
@@ -1183,6 +1343,8 @@ fun BillRow(bill: CardEntity, onOpen: () -> Unit, onShare: () -> Unit, onDelete:
 @Composable
 fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
+    var currentBill by remember(bill.id) { mutableStateOf(bill) }
+    var showRenameDialog by remember { mutableStateOf(false) }
 
     VaultBackground {
         Column(
@@ -1195,10 +1357,14 @@ fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
                 Column(Modifier.weight(1f)) {
-                    Text(bill.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                    Text(currentBill.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                     Text("Scanned bill", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                FilledTonalIconButton(onClick = { ShareUtil.shareImage(context, bill.frontImagePath, bill.name) }) {
+                FilledTonalIconButton(onClick = { showRenameDialog = true }) {
+                    Icon(Icons.Default.Edit, null)
+                }
+                Spacer(Modifier.width(6.dp))
+                FilledTonalIconButton(onClick = { ShareUtil.shareImage(context, currentBill.frontImagePath, currentBill.name) }) {
                     Icon(Icons.Default.Share, null)
                 }
             }
@@ -1212,7 +1378,7 @@ fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Image(
-                    painter = rememberAsyncImagePainter(File(bill.frontImagePath)),
+                    painter = rememberAsyncImagePainter(File(currentBill.frontImagePath)),
                     contentDescription = "Bill scan",
                     modifier = Modifier
                         .fillMaxSize()
@@ -1222,7 +1388,7 @@ fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
             }
 
             OutlinedButton(
-                onClick = { vm.softDelete(bill); onBack() },
+                onClick = { vm.softDelete(currentBill); onBack() },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp)
             ) {
@@ -1231,6 +1397,21 @@ fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                 Text("Delete")
             }
         }
+    }
+
+    if (showRenameDialog) {
+        RenameDialog(
+            title = "Rename Bill",
+            label = "Bill name",
+            currentName = currentBill.name,
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { newName ->
+                val renamed = currentBill.copy(name = newName.trim())
+                vm.rename(currentBill, newName)
+                currentBill = renamed
+                showRenameDialog = false
+            }
+        )
     }
 }
 
@@ -1619,7 +1800,7 @@ fun SmallCard(card: CardEntity, onClick: () -> Unit) {
 }
 
 @Composable
-fun CardRow(card: CardEntity, vm: CardViewModel, onOpen: (CardEntity) -> Unit) {
+fun CardRow(card: CardEntity, vm: CardViewModel, onOpen: (CardEntity) -> Unit, onRename: () -> Unit) {
     var showMenu by remember { mutableStateOf(false) }
     
     Card(
@@ -1668,6 +1849,11 @@ fun CardRow(card: CardEntity, vm: CardViewModel, onOpen: (CardEntity) -> Unit) {
             Box {
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null) }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = { onRename(); showMenu = false },
+                        leadingIcon = { Icon(Icons.Default.Edit, null) }
+                    )
                     DropdownMenuItem(
                         text = { Text(if (card.isPinned) "Unpin" else "Pin") },
                         onClick = { vm.togglePin(card); showMenu = false },
@@ -1936,8 +2122,10 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
     MaxScreenBrightness()
 
     val context = LocalContext.current
+    var currentCard by remember(card.id) { mutableStateOf(card) }
     var showBack by remember { mutableStateOf(false) }
-    val imagePath = if (showBack) card.backImagePath else card.frontImagePath
+    var showRenameDialog by remember { mutableStateOf(false) }
+    val imagePath = if (showBack) currentCard.backImagePath else currentCard.frontImagePath
 
     VaultBackground {
         Column(
@@ -1950,11 +2138,15 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
                 Column(Modifier.weight(1f)) {
-                    Text(card.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
+                    Text(currentCard.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                     Text(if (showBack) "Rear side" else "Front side", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                FilledTonalIconButton(onClick = { vm.togglePin(card) }) {
-                    Icon(Icons.Default.Star, null, tint = if (card.isPinned) VaultGold else MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalIconButton(onClick = { showRenameDialog = true }) {
+                    Icon(Icons.Default.Edit, null)
+                }
+                Spacer(Modifier.width(6.dp))
+                FilledTonalIconButton(onClick = { vm.togglePin(currentCard); currentCard = currentCard.copy(isPinned = !currentCard.isPinned) }) {
+                    Icon(Icons.Default.Star, null, tint = if (currentCard.isPinned) VaultGold else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Box(Modifier.fillMaxWidth().height(310.dp), contentAlignment = Alignment.Center) {
@@ -2026,12 +2218,12 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                 Button(onClick = { showBack = false }, shape = RoundedCornerShape(16.dp)) { Text("Front") }
                 Button(onClick = { showBack = true }, shape = RoundedCornerShape(16.dp)) { Text("Rear") }
                 FilledTonalButton(
-                    onClick = { ShareUtil.shareCard(context, card, shareBack = showBack) },
+                    onClick = { ShareUtil.shareCard(context, currentCard, shareBack = showBack) },
                     enabled = imagePath.isNotBlank(),
                     shape = RoundedCornerShape(16.dp)
                 ) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text("Share") }
             }
-            card.notes?.let {
+            currentCard.notes?.let {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
                     shape = RoundedCornerShape(20.dp)
@@ -2041,12 +2233,66 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
             }
             Spacer(Modifier.weight(1f))
             OutlinedButton(
-                onClick = { vm.softDelete(card); onBack() },
+                onClick = { vm.softDelete(currentCard); onBack() },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp)
             ) { Icon(Icons.Default.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete") }
         }
     }
+
+    if (showRenameDialog) {
+        RenameDialog(
+            title = "Rename Card",
+            label = "Card name",
+            currentName = currentCard.name,
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { newName ->
+                val renamed = currentCard.copy(name = newName.trim())
+                vm.rename(currentCard, newName)
+                currentCard = renamed
+                showRenameDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun RenameDialog(
+    title: String,
+    label: String,
+    currentName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember(currentName) { mutableStateOf(currentName) }
+    val trimmedName = name.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(label) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(trimmedName) },
+                enabled = trimmedName.isNotBlank() && trimmedName != currentName
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
