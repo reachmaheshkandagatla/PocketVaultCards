@@ -8,6 +8,7 @@ class CardRepository(
 ) {
     fun folders() = folderDao.allFolders()
     suspend fun addFolder(folder: FolderEntity) = folderDao.insert(folder)
+    suspend fun renameFolder(folder: FolderEntity, name: String) = folderDao.update(folder.copy(name = name))
     suspend fun deleteFolder(folder: FolderEntity) = folderDao.delete(folder)
     suspend fun getFolder(id: Long) = folderDao.getById(id)
 
@@ -17,6 +18,7 @@ class CardRepository(
     fun countDeleted(folderId: Long) = dao.countDeletedByFolder(folderId)
     
     suspend fun add(card: CardEntity) = dao.insert(card)
+    suspend fun rename(card: CardEntity, name: String) = dao.update(card.copy(name = name))
     suspend fun open(card: CardEntity) = dao.update(card.copy(usageCount = card.usageCount + 1, lastOpenedAt = System.currentTimeMillis()))
     suspend fun togglePin(card: CardEntity) = dao.update(card.copy(isPinned = !card.isPinned))
     suspend fun softDelete(card: CardEntity) = dao.update(card.copy(isDeleted = true, deletedAt = System.currentTimeMillis()))

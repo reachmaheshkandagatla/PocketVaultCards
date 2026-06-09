@@ -28,9 +28,11 @@ class CardViewModel(app: Application) : AndroidViewModel(app) {
     fun bankCardCount(folderId: Long) = repo.bankCardCount(folderId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     fun addFolder(folder: FolderEntity) = viewModelScope.launch { repo.addFolder(folder) }
+    fun renameFolder(folder: FolderEntity, name: String) = viewModelScope.launch { repo.renameFolder(folder, name.trim()) }
     fun deleteFolder(folder: FolderEntity) = viewModelScope.launch { repo.deleteFolder(folder) }
 
     fun add(card: CardEntity) = viewModelScope.launch { repo.add(card) }
+    fun rename(card: CardEntity, name: String) = viewModelScope.launch { repo.rename(card, name.trim()) }
     fun markOpened(card: CardEntity) = viewModelScope.launch { repo.open(card) }
     fun togglePin(card: CardEntity) = viewModelScope.launch { repo.togglePin(card) }
     fun softDelete(card: CardEntity) = viewModelScope.launch { repo.softDelete(card) }

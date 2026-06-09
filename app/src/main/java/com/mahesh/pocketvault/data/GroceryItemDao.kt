@@ -15,6 +15,9 @@ interface GroceryItemDao {
     @Query("SELECT COUNT(*) FROM grocery_items WHERE folderId = :folderId")
     fun countByFolder(folderId: Long): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM grocery_items WHERE folderId = :folderId AND isDone = 0")
+    suspend fun pendingCountByFolder(folderId: Long): Int
+
     @Insert
     suspend fun insert(item: GroceryItemEntity): Long
 
