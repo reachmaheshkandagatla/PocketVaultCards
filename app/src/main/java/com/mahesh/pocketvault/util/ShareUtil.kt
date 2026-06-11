@@ -12,6 +12,15 @@ object ShareUtil {
         shareImage(context, path, card.name)
     }
 
+    fun shareText(context: Context, subject: String, text: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share groceries"))
+    }
+
     fun shareImage(context: Context, path: String, subject: String) {
         val file = File(path)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
