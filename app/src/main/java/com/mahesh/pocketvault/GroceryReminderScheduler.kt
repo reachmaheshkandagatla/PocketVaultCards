@@ -8,12 +8,14 @@ import android.os.Build
 import java.util.Calendar
 
 object GroceryReminderScheduler {
-    const val CHANNEL_ID = "grocery_reminders"
+    const val CHANNEL_ID = "purchase_reminders_v2"
     const val EXTRA_FOLDER_ID = "folder_id"
     const val EXTRA_FOLDER_NAME = "folder_name"
     private const val PREFS_NAME = "grocery_reminders"
-    private const val REMINDER_HOUR = 20
-    private const val REMINDER_MINUTE = 0
+    private const val DEFAULT_REMINDER_HOUR = 16
+    private const val DEFAULT_REMINDER_MINUTE = 0
+
+    data class ReminderTime(val hour: Int, val minute: Int)
 
     fun isEnabled(context: Context, folderId: Long): Boolean {
         return prefs(context).getBoolean(enabledKey(folderId), false)
@@ -32,10 +34,38 @@ object GroceryReminderScheduler {
         }
     }
 
+    fun getReminderTime(context: Context, folderId: Long): ReminderTime {
+        val prefs = prefs(context)
+        return ReminderTime(
+            hour = prefs.getInt(hourKey(folderId), DEFAULT_REMINDER_HOUR),
+            minute = prefs.getInt(minuteKey(folderId), DEFAULT_REMINDER_MINUTE)
+        )
+    }
+
+    fun setReminderTime(context: Context, folderId: Long, folderName: String, hour: Int, minute: Int) {
+        prefs(context).edit()
+            .putInt(hourKey(folderId), hour)
+            .putInt(minuteKey(folderId), minute)
+            .putString(nameKey(folderId), folderName)
+            .apply()
+
+        if (isEnabled(context, folderId)) {
+            schedule(context, folderId, folderName)
+        }
+    }
+
+    fun formatReminderTime(time: ReminderTime): String {
+        val hour = time.hour % 12
+        val displayHour = if (hour == 0) 12 else hour
+        val displayMinute = time.minute.toString().padStart(2, '0')
+        val period = if (time.hour < 12) "AM" else "PM"
+        return "$displayHour:$displayMinute $period"
+    }
+
     fun schedule(context: Context, folderId: Long, folderName: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pendingIntent = reminderIntent(context, folderId, folderName)
-        val triggerAt = nextReminderTimeMillis()
+        val triggerAt = nextReminderTimeMillis(context, folderId)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
@@ -63,11 +93,12 @@ object GroceryReminderScheduler {
         )
     }
 
-    private fun nextReminderTimeMillis(): Long {
+    private fun nextReminderTimeMillis(context: Context, folderId: Long): Long {
         val now = Calendar.getInstance()
+        val reminderTime = getReminderTime(context, folderId)
         return Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, REMINDER_HOUR)
-            set(Calendar.MINUTE, REMINDER_MINUTE)
+            set(Calendar.HOUR_OF_DAY, reminderTime.hour)
+            set(Calendar.MINUTE, reminderTime.minute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
             if (!after(now)) {
@@ -79,4 +110,6 @@ object GroceryReminderScheduler {
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private fun enabledKey(folderId: Long) = "enabled_$folderId"
     private fun nameKey(folderId: Long) = "name_$folderId"
+    private fun hourKey(folderId: Long) = "hour_$folderId"
+    private fun minuteKey(folderId: Long) = "minute_$folderId"
 }
