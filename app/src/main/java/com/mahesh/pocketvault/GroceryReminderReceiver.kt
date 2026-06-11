@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.mahesh.pocketvault.data.AppDatabase
 import kotlinx.coroutines.CoroutineScope
@@ -39,9 +40,13 @@ class GroceryReminderReceiver : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 GroceryReminderScheduler.CHANNEL_ID,
-                "Grocery reminders",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
+                "Purchase reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Daily purchase reminders for unchecked grocery items."
+                enableVibration(true)
+                setSound(Settings.System.DEFAULT_NOTIFICATION_URI, audioAttributes)
+            }
             notificationManager.createNotificationChannel(channel)
         }
 
@@ -56,9 +61,12 @@ class GroceryReminderReceiver : BroadcastReceiver() {
         val itemLabel = if (pendingCount == 1) "item" else "items"
         val notification = NotificationCompat.Builder(context, GroceryReminderScheduler.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_grocery_notification)
-            .setContentTitle("Grocery reminder")
-            .setContentText("$folderName still has $pendingCount unchecked $itemLabel.")
+            .setContentTitle("Purchase reminder")
+            .setContentText("Buy $pendingCount unchecked $itemLabel from $folderName before you leave office.")
             .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
             .build()
 

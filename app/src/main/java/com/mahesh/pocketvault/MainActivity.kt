@@ -4,10 +4,13 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Build
 import android.app.KeyguardManager
+import android.app.TimePickerDialog
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
+import android.text.format.DateFormat
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -516,12 +519,19 @@ private fun ListKindIcon(folder: FolderEntity, modifier: Modifier = Modifier) {
 
 @Composable
 fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
+    val context = LocalContext.current
     val foldersFlow = remember { vm.folders() }
     val folders by foldersFlow.collectAsState(initial = emptyList())
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderPendingAction by remember { mutableStateOf<FolderEntity?>(null) }
     var folderPendingRename by remember { mutableStateOf<FolderEntity?>(null) }
     var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+
+    LaunchedEffect(folders) {
+        folders
+            .filter { it.kind == FolderEntity.KIND_GROCERIES && GroceryReminderScheduler.isEnabled(context, it.id) }
+            .forEach { GroceryReminderScheduler.schedule(context, it.id, it.name) }
+    }
 
     VaultBackground {
         Box(
@@ -906,6 +916,7 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -918,6 +929,10 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
     var remindersEnabled by remember(folder.id) {
         mutableStateOf(GroceryReminderScheduler.isEnabled(context, folder.id))
     }
+    var reminderTime by remember(folder.id) {
+        mutableStateOf(GroceryReminderScheduler.getReminderTime(context, folder.id))
+    }
+    val reminderTimeLabel = GroceryReminderScheduler.formatReminderTime(reminderTime)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -948,6 +963,25 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
                 GroceryReminderScheduler.cancel(context, folder.id)
             }
         }
+    }
+
+    fun showReminderTimePicker() {
+        TimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                val selectedTime = GroceryReminderScheduler.ReminderTime(hourOfDay, minute)
+                GroceryReminderScheduler.setReminderTime(context, folder.id, folder.name, hourOfDay, minute)
+                reminderTime = selectedTime
+                Toast.makeText(
+                    context,
+                    "Reminder set for ${GroceryReminderScheduler.formatReminderTime(selectedTime)}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            reminderTime.hour,
+            reminderTime.minute,
+            DateFormat.is24HourFormat(context)
+        ).show()
     }
 
     fun addItem() {
@@ -995,6 +1029,10 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
             }
 
             Card(
+                modifier = Modifier.combinedClickable(
+                    onClick = {},
+                    onLongClick = { showReminderTimePicker() }
+                ),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.95f)),
                 shape = RoundedCornerShape(18.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -1009,9 +1047,9 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
                         Text("Grocery reminders", fontWeight = FontWeight.ExtraBold)
                         Text(
                             if (remindersEnabled) {
-                                if (pendingCount > 0) "On for unchecked items" else "On, no pending items"
+                                if (pendingCount > 0) "On for $reminderTimeLabel purchase reminder" else "On at $reminderTimeLabel, no pending items"
                             } else {
-                                "Off"
+                                "Off, set for $reminderTimeLabel"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
