@@ -998,6 +998,23 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
         }
     }
 
+    fun shareGroceries() {
+        if (groceryItems.isEmpty()) {
+            Toast.makeText(context, "No groceries to share", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val lines = buildList {
+            add(folder.name)
+            add("")
+            groceryItems.forEach { item ->
+                val status = if (item.isDone) "[x]" else "[ ]"
+                add("$status ${item.name} - ${item.quantity}")
+            }
+        }
+        ShareUtil.shareText(context, folder.name, lines.joinToString("\n"))
+    }
+
     VaultBackground {
         Column(
             Modifier
@@ -1018,13 +1035,19 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
                     ListKindIcon(folder, modifier = Modifier.size(26.dp))
                 }
                 Spacer(Modifier.width(10.dp))
-                Column {
+                Column(Modifier.weight(1f)) {
                     Text(folder.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                     Text(
                         "$doneCount of ${groceryItems.size} done",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                IconButton(
+                    onClick = { shareGroceries() },
+                    enabled = groceryItems.isNotEmpty()
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = "Share groceries")
                 }
             }
 
