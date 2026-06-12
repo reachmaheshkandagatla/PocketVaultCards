@@ -5,6 +5,10 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+base {
+    archivesName.set("PocketVault-Cards")
+}
+
 android {
     namespace = "com.mahesh.pocketvault"
     compileSdk = 35

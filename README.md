@@ -17,6 +17,14 @@ PocketVault Cards is an offline Android app for storing private card images, cou
 - Local sharing through Android share sheets.
 - No internet permission; data stays on the device.
 
+## Google Play Readiness
+
+- Targets Android API 35.
+- Requests only camera and notification permissions.
+- Does not request internet, Bluetooth, contacts, location, SMS, phone, or broad storage permissions.
+- Uses Android share sheets for local sharing, so the destination app handles any Bluetooth or nearby transfer permissions.
+- Includes a project privacy policy draft in `PRIVACY_POLICY.md`.
+
 ## Grocery Reminders
 
 Open a groceries folder and use the `Grocery reminders` switch to turn reminders on for that folder.
@@ -43,6 +51,12 @@ The debug APK is generated under:
 app/build/outputs/apk/debug/
 ```
 
+The generated debug APK uses the application name:
+
+```text
+PocketVault-Cards-debug.apk
+```
+
 ## Tech Stack
 
 - Kotlin
@@ -55,3 +69,4 @@ app/build/outputs/apk/debug/
 ## Privacy
 
 PocketVault Cards is designed to work offline. It does not request internet access, and saved data remains local to the device.
+Review `PRIVACY_POLICY.md` before publishing and host the final policy at a public URL for Google Play Console.
