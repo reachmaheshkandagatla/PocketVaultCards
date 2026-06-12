@@ -7,7 +7,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [FolderEntity::class, CardEntity::class, GroceryItemEntity::class, BankCardEntity::class], version = 9)
+@Database(
+    entities = [FolderEntity::class, CardEntity::class, GroceryItemEntity::class, BankCardEntity::class],
+    version = 9,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
     abstract fun cardDao(): CardDao

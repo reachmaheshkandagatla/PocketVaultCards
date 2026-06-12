@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -854,7 +855,7 @@ fun CategoryScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Unit, 
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                     Box(
                         Modifier
                             .size(48.dp)
@@ -1024,7 +1025,7 @@ fun GroceryListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Uni
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                 Box(
                     Modifier
                         .size(48.dp)
@@ -1282,7 +1283,7 @@ fun BillListScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                     Box(
                         Modifier
                             .size(48.dp)
@@ -1416,7 +1417,7 @@ fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                 Column(Modifier.weight(1f)) {
                     Text(currentBill.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                     Text("Scanned bill", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1525,7 +1526,7 @@ fun BankCardListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Un
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                 Box(
                     Modifier
                         .size(48.dp)
@@ -1653,7 +1654,7 @@ fun BankCardListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Un
                             label = { Text("Card type") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCardTypeMenu) },
                             modifier = Modifier
-                                .menuAnchor()
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                                 .fillMaxWidth(),
                             singleLine = true
                         )
@@ -1750,7 +1751,7 @@ fun BankCardDetailScreen(bankCard: BankCardEntity, vm: CardViewModel, onBack: ()
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                 Column {
                     Text(bankCard.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                     Text(
@@ -2010,7 +2011,7 @@ fun AddCardScreen(folder: FolderEntity, onBack: () -> Unit, onSave: (CardEntity)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, null)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                 }
 
                 Column {
@@ -2197,7 +2198,7 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                 Column(Modifier.weight(1f)) {
                     Text(currentCard.name, fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                     Text(if (showBack) "Rear side" else "Front side", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2450,7 +2451,7 @@ fun DeletedCardsScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Un
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                 Column {
                     Text("Deleted Cards", fontWeight = FontWeight.ExtraBold, style = MaterialTheme.typography.titleLarge)
                     Text(folder.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2505,7 +2506,7 @@ fun DeletedCardsScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Un
                                         onClick = { vm.restore(card) },
                                         modifier = Modifier.size(40.dp)
                                     ) {
-                                        Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(18.dp))
                                     }
                                     FilledTonalIconButton(
                                         onClick = { vm.delete(card) },
