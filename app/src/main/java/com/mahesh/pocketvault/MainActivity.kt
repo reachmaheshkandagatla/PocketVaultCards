@@ -102,6 +102,22 @@ private fun bankCardGradient(colorKey: String) = when (colorKey) {
     else -> listOf(Color(0xFF162B5E), Color(0xFF0B6C76))
 }
 
+private fun folderWalletGradient(kind: String) = when (kind) {
+    FolderEntity.KIND_COUPONS -> listOf(Color(0xFF7A5510), Color(0xFFE3A72F))
+    FolderEntity.KIND_GROCERIES -> listOf(Color(0xFF0F5F52), Color(0xFF20A67A))
+    FolderEntity.KIND_BANK_CARDS -> listOf(Color(0xFF172554), Color(0xFF2563EB))
+    FolderEntity.KIND_BILLS -> listOf(Color(0xFF5B3446), Color(0xFFD85C6B))
+    else -> listOf(Color(0xFF14213D), Color(0xFF007C89))
+}
+
+private fun folderWalletCode(kind: String) = when (kind) {
+    FolderEntity.KIND_COUPONS -> "CP"
+    FolderEntity.KIND_GROCERIES -> "GR"
+    FolderEntity.KIND_BANK_CARDS -> "BK"
+    FolderEntity.KIND_BILLS -> "BL"
+    else -> "PV"
+}
+
 private val vaultColorScheme = lightColorScheme(
     primary = VaultBlue,
     onPrimary = Color.White,
@@ -771,48 +787,68 @@ fun FolderTile(folder: FolderEntity, subtitle: String, onClick: () -> Unit, onLo
     Card(
         Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
+            .height(128.dp)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongPress
             ),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.94f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
-        Column(
+        Box(
             Modifier
                 .fillMaxSize()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .background(Brush.linearGradient(folderWalletGradient(folder.kind)))
         ) {
             Box(
                 Modifier
-                    .size(54.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Brush.linearGradient(listOf(VaultGold.copy(alpha = 0.75f), VaultCoral.copy(alpha = 0.85f)))),
-                contentAlignment = Alignment.Center
-            ) {
-                ListKindIcon(folder, modifier = Modifier.size(28.dp))
-            }
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Color.White.copy(alpha = 0.10f))
+            )
             Column(
-                Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                Modifier
+                    .fillMaxSize()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    folder.name,
-                    fontWeight = FontWeight.ExtraBold,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ListKindIcon(folder, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        folderWalletCode(folder.kind),
+                        color = Color.White.copy(alpha = 0.82f),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        folder.name,
+                        fontWeight = FontWeight.ExtraBold,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        subtitle,
+                        color = Color.White.copy(alpha = 0.78f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
