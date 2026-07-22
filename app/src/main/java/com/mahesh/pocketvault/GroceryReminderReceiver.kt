@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.mahesh.pocketvault.data.AppDatabase
@@ -37,18 +36,16 @@ class GroceryReminderReceiver : BroadcastReceiver() {
 
     private fun showNotification(context: Context, folderId: Long, folderName: String, pendingCount: Int) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                GroceryReminderScheduler.CHANNEL_ID,
-                "Purchase reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Daily purchase reminders for unchecked grocery items."
-                enableVibration(true)
-                setSound(Settings.System.DEFAULT_NOTIFICATION_URI, audioAttributes)
-            }
-            notificationManager.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            GroceryReminderScheduler.CHANNEL_ID,
+            "Purchase reminders",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Daily purchase reminders for unchecked grocery items."
+            enableVibration(true)
+            setSound(Settings.System.DEFAULT_NOTIFICATION_URI, audioAttributes)
         }
+        notificationManager.createNotificationChannel(channel)
 
         val openIntent = Intent(context, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(

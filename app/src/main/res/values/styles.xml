@@ -1,3 +1,4 @@
 <resources>
+    <color name="launcher_icon_background">#F8F1E7</color>
     <style name="Theme.PocketVault" parent="android:style/Theme.Material.Light.NoActionBar" />
 </resources>

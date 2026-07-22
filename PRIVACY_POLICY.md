@@ -6,7 +6,7 @@ PocketVault Cards is designed as an offline personal vault for cards, grocery li
 
 PocketVault Cards does not collect, transmit, sell, or share personal data with the developer or third parties.
 
-The app does not request internet access. Your saved folders, card images, grocery items, bank card details, and scanned bills remain stored locally on your device.
+The app does not request general internet access. Your saved folders, card images, grocery items, bank card details, PINs, and scanned bills remain stored locally in the app's private storage on your device.
 
 ## Permissions
 
@@ -15,15 +15,21 @@ PocketVault Cards may request these permissions:
 - Camera: used when scanning cards or bills.
 - Notifications: used only for grocery reminder notifications that you enable.
 
+Google Play services provides the document-scanning interface and returns captured documents to the app. Google Play's update service is used when you manually check for an app update.
+
 The app uses Android share sheets when you choose to share an item. The receiving app or service handles the actual transfer.
 
 ## Local Storage
 
-Data is stored on your device. Uninstalling the app may remove locally stored app data, depending on your Android device behavior.
+Cloud backup and device-to-device transfer are disabled.
+
+On supported Android devices, the system uninstall screen may offer a choice to keep app data. Choosing to delete app data removes all locally stored information. If app data is kept, reinstalling the same signed application on that device may make the retained information available again.
 
 ## Security
 
 PocketVault Cards can use biometric or device credential authentication before opening the vault. Authentication is handled by Android system services.
+
+Sensitive card, PIN, and bill detail screens prevent screenshots and screen recording using Android's secure-window protection.
 
 ## Children
 

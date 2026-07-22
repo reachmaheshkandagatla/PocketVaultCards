@@ -57,6 +57,20 @@ The generated debug APK uses the application name:
 PocketVault-Cards-debug.apk
 ```
 
+### Signed release bundle
+
+Release builds enable R8 code shrinking and resource shrinking. Set these environment variables before creating a signed bundle:
+
+```bash
+export POCKETVAULT_KEYSTORE=/absolute/path/to/upload-key.jks
+export POCKETVAULT_KEYSTORE_PASSWORD=your-keystore-password
+export POCKETVAULT_KEY_ALIAS=your-key-alias
+export POCKETVAULT_KEY_PASSWORD=your-key-password
+./gradlew bundleRelease
+```
+
+Signing secrets and keystore files must not be committed to the repository.
+
 ## Tech Stack
 
 - Kotlin
