@@ -4,7 +4,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Build
+import androidx.core.content.edit
 import java.util.Calendar
 
 object GroceryReminderScheduler {
@@ -22,10 +22,10 @@ object GroceryReminderScheduler {
     }
 
     fun setEnabled(context: Context, folderId: Long, folderName: String, enabled: Boolean) {
-        prefs(context).edit()
-            .putBoolean(enabledKey(folderId), enabled)
-            .putString(nameKey(folderId), folderName)
-            .apply()
+        prefs(context).edit {
+            putBoolean(enabledKey(folderId), enabled)
+            putString(nameKey(folderId), folderName)
+        }
 
         if (enabled) {
             schedule(context, folderId, folderName)
@@ -43,11 +43,11 @@ object GroceryReminderScheduler {
     }
 
     fun setReminderTime(context: Context, folderId: Long, folderName: String, hour: Int, minute: Int) {
-        prefs(context).edit()
-            .putInt(hourKey(folderId), hour)
-            .putInt(minuteKey(folderId), minute)
-            .putString(nameKey(folderId), folderName)
-            .apply()
+        prefs(context).edit {
+            putInt(hourKey(folderId), hour)
+            putInt(minuteKey(folderId), minute)
+            putString(nameKey(folderId), folderName)
+        }
 
         if (isEnabled(context, folderId)) {
             schedule(context, folderId, folderName)
@@ -67,11 +67,7 @@ object GroceryReminderScheduler {
         val pendingIntent = reminderIntent(context, folderId, folderName)
         val triggerAt = nextReminderTimeMillis(context, folderId)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-        } else {
-            alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-        }
+        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
     }
 
     fun cancel(context: Context, folderId: Long) {

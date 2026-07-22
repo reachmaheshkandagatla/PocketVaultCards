@@ -3,7 +3,6 @@ package com.mahesh.pocketvault
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
-import android.app.KeyguardManager
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.ContextWrapper
@@ -62,6 +61,7 @@ import java.io.File
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.fragment.app.FragmentActivity
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -194,8 +194,7 @@ class MainActivity : FragmentActivity() {
                             onSuccess = { unlocked = true },
                             onFail = { unlocked = false }
                         )
-                    },
-                    onUnlock = { unlocked = true }
+                    }
                 )
             }
         }
@@ -256,41 +255,18 @@ private fun authenticateForBankPin(activity: FragmentActivity, onSuccess: () -> 
     )
     val promptInfo = BiometricPrompt.PromptInfo.Builder()
         .setTitle("View bank card PIN")
-        .setSubtitle("Authenticate to reveal the saved PIN")
-        .setNegativeButtonText("Cancel")
-        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        .setSubtitle("Use biometrics or your device screen lock")
+        .setAllowedAuthenticators(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
         .build()
 
     biometricPrompt.authenticate(promptInfo)
 }
 
 @Composable
-fun LockScreen(onRetry: () -> Unit, onUnlock: () -> Unit) {
-    val context = LocalContext.current
-    val keyguardManager = remember {
-        context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-    }
-    val deviceCredentialLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            onUnlock()
-        }
-    }
-
-    fun unlockWithDeviceCredential() {
-        val credentialIntent = keyguardManager.createConfirmDeviceCredentialIntent(
-            "Unlock PocketVault",
-            "Use your phone PIN, password, or pattern"
-        )
-
-        if (credentialIntent != null) {
-            deviceCredentialLauncher.launch(credentialIntent)
-        } else {
-            onRetry()
-        }
-    }
-
+fun LockScreen(onRetry: () -> Unit) {
     MaterialTheme(colorScheme = vaultColorScheme) {
         VaultBackground {
             Box(
@@ -345,17 +321,6 @@ fun LockScreen(onRetry: () -> Unit, onUnlock: () -> Unit) {
                             Spacer(Modifier.width(8.dp))
                             Text("Unlock PocketVault")
                         }
-                        OutlinedButton(
-                            onClick = { unlockWithDeviceCredential() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(Icons.Default.Lock, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Use Phone PIN / Pattern")
-                        }
                     }
                 }
             }
@@ -373,7 +338,7 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
 
     fun navigateBack() {
         screen = when (screen) {
-            "about" -> "home"
+            "about", "privacy" -> "home"
             "category", "groceries", "bankCards", "bills" -> "home"
             "bankCardDetail" -> "bankCards"
             "billDetail" -> "bills"
@@ -392,6 +357,7 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
                 "home" -> HomeScreen(
                     vm,
                     onAbout = { screen = "about" },
+                    onPrivacy = { screen = "privacy" },
                     onOpen = { folder ->
                         selectedFolder = folder
                         screen = when (folder.kind) {
@@ -404,6 +370,7 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
                     }
                 )
                 "about" -> AboutScreen(onBack = { screen = "home" })
+                "privacy" -> PrivacyPolicyScreen(onBack = { screen = "home" })
                 "category" -> selectedFolder?.let { folder ->
                     CategoryScreen(
                         vm = vm,
@@ -543,6 +510,17 @@ private fun ListKindIcon(folder: FolderEntity, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun PreventScreenshots() {
+    val activity = LocalContext.current.findActivity()
+    DisposableEffect(activity) {
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+}
+
+@Composable
 fun AboutScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val versionName = remember(context) {
@@ -613,7 +591,64 @@ fun AboutScreen(onBack: () -> Unit) {
 }
 
 @Composable
-fun HomeScreen(vm: CardViewModel, onAbout: () -> Unit, onOpen: (FolderEntity) -> Unit) {
+fun PrivacyPolicyScreen(onBack: () -> Unit) {
+    VaultBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 24.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Text(
+                    "Privacy Policy",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    "Your data stays on your device",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text("PocketVault Cards does not collect, sell, or share your saved information with the developer. Folders, card images, grocery items, bank card details, PINs, and scanned bills are stored locally in the app's private storage.")
+                Text("Camera", fontWeight = FontWeight.Bold)
+                Text("Camera access is used only when you choose to scan a card or bill. The Google Play services document scanner helps capture the document and returns the result to PocketVault Cards.")
+                Text("Notifications", fontWeight = FontWeight.Bold)
+                Text("Notification permission is used only for grocery reminders that you enable.")
+                Text("Sharing", fontWeight = FontWeight.Bold)
+                Text("Nothing is shared automatically. When you choose Share, Android's share sheet sends the selected item to the app you choose, and that receiving app applies its own privacy practices.")
+                Text("Security and backup", fontWeight = FontWeight.Bold)
+                Text("The app uses Android biometrics or your device screen lock for access. Cloud backup and device-to-device transfer are disabled. Sensitive detail screens block screenshots.")
+                Text("Uninstalling", fontWeight = FontWeight.Bold)
+                Text("On supported Android devices, the uninstall screen may let you keep app data. Choose Delete app data to remove everything. If you keep the data and later reinstall the same signed app, Android may restore it on that device.")
+                Text("Third-party components", fontWeight = FontWeight.Bold)
+                Text("The app uses Google Play services for document scanning and Google Play's update service to check for app updates. The app itself does not request general internet access.")
+                Text("Contact", fontWeight = FontWeight.Bold)
+                Text("For privacy questions, use the developer contact shown on the PocketVault Cards Google Play listing.")
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeScreen(
+    vm: CardViewModel,
+    onAbout: () -> Unit,
+    onPrivacy: () -> Unit,
+    onOpen: (FolderEntity) -> Unit
+) {
     val context = LocalContext.current
     val activity = context.findActivity()
     val foldersFlow = remember { vm.folders() }
@@ -660,14 +695,14 @@ fun HomeScreen(vm: CardViewModel, onAbout: () -> Unit, onOpen: (FolderEntity) ->
                     updateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE -> {
                         val marketIntent = Intent(
                             Intent.ACTION_VIEW,
-                            Uri.parse("market://details?id=${context.packageName}")
+                            "market://details?id=${context.packageName}".toUri()
                         )
                         runCatching { context.startActivity(marketIntent) }
                             .onFailure {
                                 context.startActivity(
                                     Intent(
                                         Intent.ACTION_VIEW,
-                                        Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")
+                                        "https://play.google.com/store/apps/details?id=${context.packageName}".toUri()
                                     )
                                 )
                             }
@@ -731,6 +766,14 @@ fun HomeScreen(vm: CardViewModel, onAbout: () -> Unit, onOpen: (FolderEntity) ->
                             onClick = {
                                 showAppMenu = false
                                 onAbout()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Privacy Policy") },
+                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                            onClick = {
+                                showAppMenu = false
+                                onPrivacy()
                             }
                         )
                         DropdownMenuItem(
@@ -1608,6 +1651,7 @@ fun BillRow(bill: CardEntity, onOpen: () -> Unit, onRename: () -> Unit, onShare:
 
 @Composable
 fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
+    PreventScreenshots()
     val context = LocalContext.current
     var currentBill by remember(bill.id) { mutableStateOf(bill) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -1942,6 +1986,7 @@ fun BankCardListScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Un
 
 @Composable
 fun BankCardDetailScreen(bankCard: BankCardEntity, vm: CardViewModel, onBack: () -> Unit) {
+    PreventScreenshots()
     val context = LocalContext.current
     val activity = context as FragmentActivity
     var showPin by remember { mutableStateOf(false) }
@@ -2385,6 +2430,7 @@ fun ScanImageBox(label: String, uri: Uri?, onScan: () -> Unit, onUpload: () -> U
 
 @Composable
 fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
+    PreventScreenshots()
     MaxScreenBrightness()
 
     val context = LocalContext.current
@@ -2416,7 +2462,7 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                 }
             }
             Box(Modifier.fillMaxWidth().height(310.dp), contentAlignment = Alignment.Center) {
-                var scale by remember { mutableStateOf(1f) }
+                var scale by remember { mutableFloatStateOf(1f) }
                 var offset by remember { mutableStateOf(Offset.Zero) }
 
                 Card(
