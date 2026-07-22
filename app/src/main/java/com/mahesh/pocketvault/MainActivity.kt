@@ -7,6 +7,7 @@ import android.app.KeyguardManager
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.text.format.DateFormat
 import android.view.WindowManager
@@ -74,6 +75,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.activity.result.IntentSenderRequest
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.UpdateAvailability
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -368,6 +373,7 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
 
     fun navigateBack() {
         screen = when (screen) {
+            "about" -> "home"
             "category", "groceries", "bankCards", "bills" -> "home"
             "bankCardDetail" -> "bankCards"
             "billDetail" -> "bills"
@@ -385,6 +391,7 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
             when (screen) {
                 "home" -> HomeScreen(
                     vm,
+                    onAbout = { screen = "about" },
                     onOpen = { folder ->
                         selectedFolder = folder
                         screen = when (folder.kind) {
@@ -396,6 +403,7 @@ fun PocketVaultApp(vm: CardViewModel = viewModel()) {
                         }
                     }
                 )
+                "about" -> AboutScreen(onBack = { screen = "home" })
                 "category" -> selectedFolder?.let { folder ->
                     CategoryScreen(
                         vm = vm,
@@ -535,14 +543,147 @@ private fun ListKindIcon(folder: FolderEntity, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
+fun AboutScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val versionName = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "Unknown"
+    }
+
+    VaultBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Text(
+                    "About",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.mipmap.ic_launcher),
+                        contentDescription = "PocketVault Cards logo",
+                        modifier = Modifier
+                            .size(88.dp)
+                            .clip(RoundedCornerShape(22.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    Text(
+                        "PocketVault Cards",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        "Version $versionName",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "A private, offline wallet for the cards, coupons, groceries, bank cards, and bills that matter.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeScreen(vm: CardViewModel, onAbout: () -> Unit, onOpen: (FolderEntity) -> Unit) {
+    val context = LocalContext.current
+    val activity = context.findActivity()
     val foldersFlow = remember { vm.folders() }
     val folders by foldersFlow.collectAsState(initial = emptyList())
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderPendingAction by remember { mutableStateOf<FolderEntity?>(null) }
     var folderPendingRename by remember { mutableStateOf<FolderEntity?>(null) }
     var folderPendingDelete by remember { mutableStateOf<FolderEntity?>(null) }
+    var showAppMenu by remember { mutableStateOf(false) }
+    var checkingForUpdate by remember { mutableStateOf(false) }
+    val updateManager = remember(context) { AppUpdateManagerFactory.create(context) }
+    val updateLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            Toast.makeText(context, "Update cancelled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun checkForUpdates() {
+        if (checkingForUpdate) return
+        checkingForUpdate = true
+        updateManager.appUpdateInfo
+            .addOnSuccessListener { updateInfo ->
+                checkingForUpdate = false
+                when {
+                    updateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                            updateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE) &&
+                            activity != null -> {
+                        updateManager.startUpdateFlowForResult(
+                            updateInfo,
+                            updateLauncher,
+                            AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build()
+                        )
+                    }
+                    updateInfo.updateAvailability() == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS &&
+                            activity != null -> {
+                        updateManager.startUpdateFlowForResult(
+                            updateInfo,
+                            updateLauncher,
+                            AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build()
+                        )
+                    }
+                    updateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE -> {
+                        val marketIntent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("market://details?id=${context.packageName}")
+                        )
+                        runCatching { context.startActivity(marketIntent) }
+                            .onFailure {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")
+                                    )
+                                )
+                            }
+                    }
+                    else -> Toast.makeText(context, "PocketVault Cards is up to date", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .addOnFailureListener {
+                checkingForUpdate = false
+                Toast.makeText(
+                    context,
+                    "Couldn't check for updates. Make sure this app was installed from Google Play.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+    }
 
     LaunchedEffect(folders) {
         folders
@@ -572,9 +713,36 @@ fun HomeScreen(vm: CardViewModel, onOpen: (FolderEntity) -> Unit) {
                     contentScale = ContentScale.Crop
                 )
                 Spacer(Modifier.width(12.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("PocketVault Cards", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                     Text("Private card library", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box {
+                    IconButton(onClick = { showAppMenu = true }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open app menu")
+                    }
+                    DropdownMenu(
+                        expanded = showAppMenu,
+                        onDismissRequest = { showAppMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("About") },
+                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                            onClick = {
+                                showAppMenu = false
+                                onAbout()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (checkingForUpdate) "Checking for updates…" else "Check for updates") },
+                            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                            enabled = !checkingForUpdate,
+                            onClick = {
+                                showAppMenu = false
+                                checkForUpdates()
+                            }
+                        )
+                    }
                 }
             }
 

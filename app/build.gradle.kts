@@ -45,6 +45,7 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
 }
