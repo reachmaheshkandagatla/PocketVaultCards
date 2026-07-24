@@ -1,4 +1,4 @@
-package com.mahesh.pocketvault
+package com.ongelabs.pocketvault
 
 import android.app.AlarmManager
 import android.app.PendingIntent

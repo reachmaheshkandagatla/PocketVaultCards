@@ -1,9 +1,9 @@
-package com.mahesh.pocketvault.util
+package com.ongelabs.pocketvault.util
 
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
-import com.mahesh.pocketvault.data.CardEntity
+import com.ongelabs.pocketvault.data.CardEntity
 import java.io.File
 
 object ShareUtil {

@@ -1,4 +1,4 @@
-package com.mahesh.pocketvault.util
+package com.ongelabs.pocketvault.util
 
 import android.content.Context
 import android.net.Uri

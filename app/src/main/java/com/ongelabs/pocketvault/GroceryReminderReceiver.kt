@@ -1,4 +1,4 @@
-package com.mahesh.pocketvault
+package com.ongelabs.pocketvault
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,7 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
-import com.mahesh.pocketvault.data.AppDatabase
+import com.ongelabs.pocketvault.data.AppDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
