@@ -1,4 +1,4 @@
-package com.mahesh.pocketvault.data
+package com.ongelabs.pocketvault.data
 
 import androidx.room.Entity
 import androidx.room.ForeignKey

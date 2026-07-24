@@ -21,11 +21,11 @@ base {
 }
 
 android {
-    namespace = "com.mahesh.pocketvault"
+    namespace = "com.ongelabs.pocketvault"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.mahesh.pocketvault"
+        applicationId = "com.ongelabs.pocketvault"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

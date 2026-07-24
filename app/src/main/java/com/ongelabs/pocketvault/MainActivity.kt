@@ -1,4 +1,4 @@
-package com.mahesh.pocketvault
+package com.ongelabs.pocketvault
 
 import android.net.Uri
 import android.os.Bundle
@@ -50,13 +50,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
-import com.mahesh.pocketvault.data.CardEntity
-import com.mahesh.pocketvault.data.BankCardEntity
-import com.mahesh.pocketvault.data.FolderEntity
-import com.mahesh.pocketvault.data.GroceryItemEntity
-import com.mahesh.pocketvault.ui.CardViewModel
-import com.mahesh.pocketvault.util.ImageStore
-import com.mahesh.pocketvault.util.ShareUtil
+import com.ongelabs.pocketvault.data.CardEntity
+import com.ongelabs.pocketvault.data.BankCardEntity
+import com.ongelabs.pocketvault.data.FolderEntity
+import com.ongelabs.pocketvault.data.GroceryItemEntity
+import com.ongelabs.pocketvault.ui.CardViewModel
+import com.ongelabs.pocketvault.util.ImageStore
+import com.ongelabs.pocketvault.util.ShareUtil
 import java.io.File
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -621,6 +621,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
+                Text("Effective date: 24 July 2026")
                 Text("PocketVault Cards does not collect, sell, or share your saved information with the developer. Folders, card images, grocery items, bank card details, PINs, and scanned bills are stored locally in the app's private storage.")
                 Text("Camera", fontWeight = FontWeight.Bold)
                 Text("Camera access is used only when you choose to scan a card or bill. The Google Play services document scanner helps capture the document and returns the result to PocketVault Cards.")
@@ -635,7 +636,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                 Text("Third-party components", fontWeight = FontWeight.Bold)
                 Text("The app uses Google Play services for document scanning and Google Play's update service to check for app updates. The app itself does not request general internet access.")
                 Text("Contact", fontWeight = FontWeight.Bold)
-                Text("For privacy questions, use the developer contact shown on the PocketVault Cards Google Play listing.")
+                Text("PocketVault Cards is provided by OngeLabs, based in South Africa. For privacy questions or requests, email reachmaheshkandagatla@gmail.com.")
                 Spacer(Modifier.height(24.dp))
             }
         }

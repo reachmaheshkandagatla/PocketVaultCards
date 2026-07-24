@@ -1,4 +1,4 @@
-package com.mahesh.pocketvault.data
+package com.ongelabs.pocketvault.data
 
 import androidx.room.Dao
 import androidx.room.Delete

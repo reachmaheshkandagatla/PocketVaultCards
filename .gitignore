@@ -5,4 +5,6 @@ build/
 app/build/
 local.properties
 *.iml
-
+.vscode/
+*.jks
+*.keystore
