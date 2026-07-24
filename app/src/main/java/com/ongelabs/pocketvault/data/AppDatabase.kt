@@ -6,6 +6,8 @@ import androidx.room.migration.Migration
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.ongelabs.pocketvault.util.VaultCrypto
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
     entities = [FolderEntity::class, CardEntity::class, GroceryItemEntity::class, BankCardEntity::class],
@@ -82,10 +84,27 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         fun get(context: Context): AppDatabase = INSTANCE ?: synchronized(this) {
-            INSTANCE ?: Room.databaseBuilder(context, AppDatabase::class.java, "pocketvault.db")
+            INSTANCE ?: buildEncryptedDatabase(context.applicationContext).also { INSTANCE = it }
+        }
+
+        private fun buildEncryptedDatabase(context: Context): AppDatabase {
+            System.loadLibrary("sqlcipher")
+            val legacyDatabase = DatabaseEncryption.preparePlaintextMigration(context)
+            val passphrase = VaultCrypto.databasePassphrase(context)
+            val database = Room.databaseBuilder(context, AppDatabase::class.java, "pocketvault.db")
+                .openHelperFactory(SupportOpenHelperFactory(passphrase))
                 .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
-                .also { INSTANCE = it }
+
+            if (legacyDatabase != null) {
+                DatabaseEncryption.copyIntoEncryptedDatabase(
+                    legacyDatabase,
+                    database.openHelper.writableDatabase
+                )
+            } else {
+                database.openHelper.writableDatabase
+            }
+            return database
         }
     }
 }

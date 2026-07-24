@@ -4,6 +4,8 @@ PocketVault Cards is an offline Android app for storing private card images, cou
 
 ## Features
 
+- SQLCipher-encrypted local database with Android Keystore-protected key material.
+- AES-256-GCM encryption for saved card and bill images.
 - Biometric or device credential unlock before opening the vault.
 - Folder-based organization for cards, coupons, groceries, bank cards, and bills.
 - Long-press a folder to open folder actions, including `Rename` and `Delete`.
