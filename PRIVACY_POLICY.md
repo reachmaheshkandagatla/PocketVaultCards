@@ -85,6 +85,9 @@ Because OngeLabs does not possess a server-side copy of your vault, we cannot re
 
 The App uses safeguards that include:
 
+- SQLCipher encryption for the Room database;
+- AES-256-GCM encryption for saved card and bill images;
+- a non-exportable Android Keystore key that protects encryption key material;
 - Android private application storage;
 - optional biometric or device-credential access control;
 - screenshot and screen-recording protection on sensitive detail screens;

@@ -49,6 +49,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
 import coil.compose.rememberAsyncImagePainter
 import com.ongelabs.pocketvault.data.CardEntity
 import com.ongelabs.pocketvault.data.BankCardEntity
@@ -57,7 +58,9 @@ import com.ongelabs.pocketvault.data.GroceryItemEntity
 import com.ongelabs.pocketvault.ui.CardViewModel
 import com.ongelabs.pocketvault.util.ImageStore
 import com.ongelabs.pocketvault.util.ShareUtil
-import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -176,6 +179,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            ImageStore.migrateLegacyImages(applicationContext)
+        }
 
         var unlocked by mutableStateOf(false)
 
@@ -510,6 +517,20 @@ private fun ListKindIcon(folder: FolderEntity, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun rememberVaultImage(path: String): ByteArray? {
+    val context = LocalContext.current
+    return produceState<ByteArray?>(initialValue = null, path) {
+        value = if (path.isBlank()) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching { ImageStore.readImage(context, path) }.getOrNull()
+            }
+        }
+    }.value
+}
+
+@Composable
 private fun PreventScreenshots() {
     val activity = LocalContext.current.findActivity()
     DisposableEffect(activity) {
@@ -630,7 +651,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                 Text("Sharing", fontWeight = FontWeight.Bold)
                 Text("Nothing is shared automatically. When you choose Share, Android's share sheet sends the selected item to the app you choose, and that receiving app applies its own privacy practices.")
                 Text("Security and backup", fontWeight = FontWeight.Bold)
-                Text("The app uses Android biometrics or your device screen lock for access. Cloud backup and device-to-device transfer are disabled. Sensitive detail screens block screenshots.")
+                Text("The app encrypts its Room database with SQLCipher and encrypts saved card and bill images with AES-256-GCM. Encryption key material is protected by Android Keystore. The app also uses Android biometrics or your device screen lock for access, disables cloud backup and device-to-device transfer, and blocks screenshots on sensitive detail screens.")
                 Text("Uninstalling", fontWeight = FontWeight.Bold)
                 Text("On supported Android devices, the uninstall screen may let you keep app data. Choose Delete app data to remove everything. If you keep the data and later reinstall the same signed app, Android may restore it on that device.")
                 Text("Third-party components", fontWeight = FontWeight.Bold)
@@ -1624,7 +1645,7 @@ fun BillRow(bill: CardEntity, onOpen: () -> Unit, onRename: () -> Unit, onShare:
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Image(
-                    painter = rememberAsyncImagePainter(File(bill.frontImagePath)),
+                    painter = rememberAsyncImagePainter(rememberVaultImage(bill.frontImagePath)),
                     contentDescription = "Bill scan",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -1689,7 +1710,7 @@ fun BillDetailScreen(bill: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Image(
-                    painter = rememberAsyncImagePainter(File(currentBill.frontImagePath)),
+                    painter = rememberAsyncImagePainter(rememberVaultImage(currentBill.frontImagePath)),
                     contentDescription = "Bill scan",
                     modifier = Modifier
                         .fillMaxSize()
@@ -2140,7 +2161,7 @@ fun CardRow(card: CardEntity, vm: CardViewModel, onOpen: (CardEntity) -> Unit, o
                     }
                 } else {
                     Image(
-                        painter = rememberAsyncImagePainter(File(card.frontImagePath)),
+                        painter = rememberAsyncImagePainter(rememberVaultImage(card.frontImagePath)),
                         contentDescription = "Card front",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -2510,7 +2531,7 @@ fun CardDetailScreen(card: CardEntity, vm: CardViewModel, onBack: () -> Unit) {
                             }
                         } else {
                             Image(
-                                rememberAsyncImagePainter(File(imagePath)),
+                                rememberAsyncImagePainter(rememberVaultImage(imagePath)),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -2741,7 +2762,7 @@ fun DeletedCardsScreen(vm: CardViewModel, folder: FolderEntity, onBack: () -> Un
                                     shape = RoundedCornerShape(14.dp)
                                 ) {
                                     Image(
-                                        painter = rememberAsyncImagePainter(File(card.frontImagePath)),
+                                        painter = rememberAsyncImagePainter(rememberVaultImage(card.frontImagePath)),
                                         contentDescription = "Card front",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
